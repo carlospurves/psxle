@@ -360,7 +360,6 @@ static void CheckSubDir() {
 
 	CreateHomeConfigDir(BIOS_DIR);
 	CreateHomeConfigDir(MEMCARD_DIR);
-  CreateHomeConfigDir(MEMCARD_PERGAME_DIR);
 	CreateHomeConfigDir(STATES_DIR);
 	CreateHomeConfigDir(PLUGINS_DIR);
 	CreateHomeConfigDir(PLUGINS_CFG_DIR);
@@ -483,6 +482,7 @@ static void ScanAllPlugins (void) {
 	ScanPlugins(currentdir);
 	g_free(currentdir);
 
+
 	// Check for bad links in ~/.pcsxr/plugins/
 	currentdir = g_build_filename(getenv("HOME"), PLUGINS_DIR, NULL);
 	CheckSymlinksInPath(currentdir);
@@ -503,17 +503,24 @@ static void ScanAllPlugins (void) {
 void set_default_plugin(char *plugin_name, char *conf_plugin_name) {
 	if (strlen(plugin_name) != 0) {
 		strcpy(conf_plugin_name, plugin_name);
-		printf("Picking default plugin: %s\n", plugin_name);
+		if (DEBUG) printf("Picking default plugin: %s\n", plugin_name);
 	} else
-		printf("No default plugin could be found for %s\n", conf_plugin_name);
+		if (DEBUG) printf("No default plugin could be found for %s\n", conf_plugin_name);
 }
-
 int main(int argc, char *argv[]) {
 	char file[MAXPATHLEN] = "";
 	char path[MAXPATHLEN];
 	int runcd = RUN;
+	int validPipes = 0;
+	int nHooks = 0;
 	int loadst = -1;
 	int i;
+
+	// Here we allocate the memory that will be used to instruct plugins
+	uniquePipeValue = (char*) malloc(sizeof(char)*32);
+	int* memoryListenersCount = (char*) malloc(sizeof(int));
+	int* inputHooks = NULL;
+	int dispMode = 1;
 
 #ifdef ENABLE_NLS
 	setlocale (LC_ALL, "");
@@ -526,8 +533,9 @@ int main(int argc, char *argv[]) {
 
 	// what is the name of the config file?
 	// it may be redefined by -cfg on the command line
-	strcpy(cfgfile_basename, "pcsxr.cfg");
+	strcpy(cfgfile_basename, "default.cfg");
 
+	// read command line options
 
 	for (i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "-runcd")) runcd = RUN_CD;
@@ -676,20 +684,29 @@ int main(int argc, char *argv[]) {
 
 	if (UseGui && runcd != RUN_CD) SetIsoFile(NULL);
 
-	if (SysInit() == -1) return 1;
+	if (SysInit(inputHooks, nHooks, uniquePipeValue) == -1) return 1;
 
 	if (UseGui && runcd != RUN_CD) {
 		StartGui();
 	} else {
 		// the following only occurs if the gui isn't started
 		if (LoadPlugins() == -1) {
-			SysErrorMessage(_("Error"), _("Failed loading plugins!"));
+			printf("Failed loading plugins!\n");
 			return 1;
 		}
 
-		if (OpenPlugins() == -1 || plugins_configured() == FALSE) {
+		int plugin_code = OpenPlugins(uniquePipeValue, audioRecordSwitch, audioRecordPath, dispMode, &writeStatusNotification);
+		if (plugin_code < 0 || plugins_configured() == FALSE) {
+			if (DEBUG) printf("Failed to open plugins.\n");
+			if (plugins_configured() == FALSE){
+				printf("Plugins not configured!\n");
+			}else{
+				printf("Plugin code: %i\n", plugin_code);
+			}
 			return 1;
 		}
+
+		if (DEBUG) printf("Loaded plugins.\n");
 
 		CheckCdrom();
 
@@ -702,7 +719,7 @@ int main(int argc, char *argv[]) {
 			if (runcd == RUN_CD) {
 				if (LoadCdrom() == -1) {
 					ClosePlugins();
-					printf(_("Could not load CD-ROM!\n"));
+					if (DEBUG) printf(_("Could not load CD-ROM!\n"));
 					return -1;
 				}
 			}
@@ -720,10 +737,16 @@ int main(int argc, char *argv[]) {
 			g_free(state_filename);
 		}
 
+		if (loadst == -2){
+			if (DEBUG) printf("Loading default state...\n");
+			LoadState(stateToLoad);
+		}
+
+		pthread_create(&ProceedurePipeThread, NULL, ProceedurePipeThreadF, (void*)uniquePipeValue);
+
 		autoloadCheats();
 		psxCpu->Execute();
 	}
-
 
 	free(uniquePipeValue);
 	free(memoryListenersCount);
@@ -732,7 +755,7 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 
-int SysInit() {
+int SysInit(int* inputHooks, int nHooks, char* uniquePipeValue) {
 #ifdef EMU_LOG
 #ifndef LOG_STDOUT
 	emuLog = fopen("emuLog.txt","wb");
@@ -752,8 +775,8 @@ int SysInit() {
 #endif
 #endif
 
-	if (EmuInit() == -1) {
-		printf(_("PSX emulator couldn't be initialized.\n"));
+	if (EmuInit(inputHooks, nHooks, uniquePipeValue) == -1) {
+		if (DEBUG) printf(_("PSX emulator couldn't be initialized.\n"));
 		return -1;
 	}
 
@@ -798,7 +821,7 @@ void SysPrintf(const char *fmt, ...) {
 		static char linestart = 1;
 		int l = strlen(msg);
 
-		printf(linestart ? " * %s" : "%s", msg);
+		if (DEBUG) printf(linestart ? " * %s" : "%s", msg);
 
 		if (l > 0 && msg[l - 1] == '\n') {
 			linestart = 1;
@@ -852,7 +875,6 @@ static void SysDisableScreenSaver() {
 	}
 }
 
-
 void SysUpdate() {
 
 	if (emulationIsPaused){
@@ -882,8 +904,6 @@ void SysUpdate() {
 	}
 
 }
-
-
 
 /* ADB TODO Replace RunGui() with StartGui ()*/
 void SysRunGui() {
