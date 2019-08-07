@@ -15,8 +15,6 @@ from PIL import Image
 
 gameCatalogue = [("kula", "/isos/kula.iso")]
 
-HOMEOVERRIDE = None
-
 def interact():
     import code
     code.InteractiveConsole(locals=globals()).interact()
@@ -162,7 +160,7 @@ class Console:
         self.memoryInterest = []
 
     def createHomeConfig(self):
-        self.CONFIGHOME = os.path.expanduser("~/.psxpy") if not HOMEOVERRIDE else HOMEOVERRIDE
+        self.CONFIGHOME = os.path.expanduser("~/.psxle")
         if not os.path.exists(self.CONFIGHOME):
             os.mkdir(self.CONFIGHOME)
             os.mkdir(self.CONFIGHOME+"/isos")

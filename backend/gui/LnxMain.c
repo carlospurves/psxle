@@ -188,24 +188,6 @@ static void ScanAllPlugins (void) {
 	gchar *currentdir;
 
 	// scan some default locations to find plugins
-	ScanPlugins("/usr/lib/games/psemu/");
-	ScanPlugins("/usr/lib/games/psemu/lib/");
-	ScanPlugins("/usr/lib/games/psemu/config/");
-	ScanPlugins("/usr/local/lib/games/psemu/lib/");
-	ScanPlugins("/usr/local/lib/games/psemu/config/");
-	ScanPlugins("/usr/local/lib/games/psemu/");
-	ScanPlugins("/usr/lib64/games/psemu/");
-	ScanPlugins("/usr/lib64/games/psemu/lib/");
-	ScanPlugins("/usr/lib64/games/psemu/config/");
-	ScanPlugins("/usr/local/lib64/games/psemu/lib/");
-	ScanPlugins("/usr/local/lib64/games/psemu/config/");
-	ScanPlugins("/usr/local/lib64/games/psemu/");
-	ScanPlugins("/usr/lib32/games/psemu/");
-	ScanPlugins("/usr/lib32/games/psemu/lib/");
-	ScanPlugins("/usr/lib32/games/psemu/config/");
-	ScanPlugins("/usr/local/lib32/games/psemu/lib/");
-	ScanPlugins("/usr/local/lib32/games/psemu/config/");
-	ScanPlugins("/usr/local/lib32/games/psemu/");
 	ScanPlugins(DEF_PLUGIN_DIR);
 	ScanPlugins(DEF_PLUGIN_DIR "/lib");
 	ScanPlugins(DEF_PLUGIN_DIR "/lib64");
@@ -213,26 +195,6 @@ static void ScanAllPlugins (void) {
 	ScanPlugins(DEF_PLUGIN_DIR "/config");
 
 	// scan some default locations to find bioses
-	ScanBios("/usr/lib/games/psemu");
-	ScanBios("/usr/lib/games/psemu/bios");
-	ScanBios("/usr/lib64/games/psemu");
-	ScanBios("/usr/lib64/games/psemu/bios");
-	ScanBios("/usr/lib32/games/psemu");
-	ScanBios("/usr/lib32/games/psemu/bios");
-	ScanBios("/usr/share/psemu");
-	ScanBios("/usr/share/psemu/bios");
-	ScanBios("/usr/share/pcsxr");
-	ScanBios("/usr/share/pcsxr/bios");
-	ScanBios("/usr/local/lib/games/psemu");
-	ScanBios("/usr/local/lib/games/psemu/bios");
-	ScanBios("/usr/local/lib64/games/psemu");
-	ScanBios("/usr/local/lib64/games/psemu/bios");
-	ScanBios("/usr/local/lib32/games/psemu");
-	ScanBios("/usr/local/lib32/games/psemu/bios");
-	ScanBios("/usr/local/share/psemu");
-	ScanBios("/usr/local/share/psemu/bios");
-	ScanBios("/usr/local/share/pcsxr");
-	ScanBios("/usr/local/share/pcsxr/bios");
 	ScanBios(PSEMU_DATA_DIR);
 	ScanBios(PSEMU_DATA_DIR "/bios");
 
@@ -443,7 +405,7 @@ int main(int argc, char *argv[]) {
 				}
 			}
 		}
-		
+
 		if (loadst==0) {
 			loadst = UpdateMenuSlots() + 1;
 		}
