@@ -55,7 +55,7 @@ void OnHelp_About();
 void OnDestroy();
 void OnFile_Exit();
 
-// EXE name is stored here 
+// EXE name is stored here
 gchar* reset_load_info = NULL;
 
 void on_states_load(GtkWidget *widget, gpointer user_data);
@@ -68,6 +68,8 @@ static GtkBuilder *builder;
 GtkWidget *Window = NULL;
 
 int destroy = 0;
+
+int* NULLSwitch;
 
 extern void LidInterrupt();
 
@@ -138,7 +140,7 @@ void ResetMenuSlots() {
 		gtk_widget_set_sensitive(widget, TRUE);
 #else
 		widget = GTK_WIDGET(gtk_builder_get_object(builder, "sio1"));
-		gtk_widget_set_sensitive(widget, FALSE);	
+		gtk_widget_set_sensitive(widget, FALSE);
 #endif
 		widget = GTK_WIDGET(gtk_builder_get_object(builder, "net1"));
 		gtk_widget_set_sensitive(widget, TRUE);
@@ -151,7 +153,7 @@ void ResetMenuSlots() {
 		gtk_widget_set_sensitive(widget, TRUE);
 		widget = GTK_WIDGET(gtk_builder_get_object(builder, "toolbutton_cdrom"));
 		gtk_widget_set_sensitive(widget, TRUE);
-		
+
 		widget = GTK_WIDGET(gtk_builder_get_object(builder, "statusbar"));
 		gtk_statusbar_pop(GTK_STATUSBAR(widget), 1);
 		gtk_statusbar_push(GTK_STATUSBAR(widget), 1, _("Ready"));
@@ -162,7 +164,7 @@ void ResetMenuSlots() {
 			widget = GTK_WIDGET(gtk_builder_get_object (builder, str));
 			g_free (str);
 
-			if (Slots[i] == -1) 
+			if (Slots[i] == -1)
 				gtk_widget_set_sensitive(widget, FALSE);
 			else
 				gtk_widget_set_sensitive(widget, TRUE);
@@ -273,7 +275,7 @@ gchar* get_cdrom_label_id(const gchar* suffix) {
 
 	if (strlen(buf) <= (2+strlen(dot_extension_cht)))
 		return g_strconcat("psx-default", dot_extension_cht, NULL);
-	else 
+	else
 		return g_strdup(buf);
 }
 
@@ -317,6 +319,9 @@ void autoloadCheats() {
 
 void StartGui() {
 	GtkWidget *widget;
+	NULLSwitch = malloc(sizeof(int));
+	NULLSwitch[0] = 0;
+
 
 	/* If a plugin fails, the Window is not NULL, but is not initialised,
 	   so the following causes a segfault
@@ -329,12 +334,12 @@ void StartGui() {
 	gtk_icon_theme_add_resource_path(itheme,"/org/pcsxr/gui/pixmaps/");
 
 	builder = gtk_builder_new();
-	
+
 	if (!gtk_builder_add_from_resource(builder, "/org/pcsxr/gui/pcsxr.ui", NULL)) {
 		g_warning("Error: interface could not be loaded!");
 		return;
 	}
-	
+
 	Window = GTK_WIDGET(gtk_builder_get_object(builder, "MainWindow"));
 	gtk_widget_show(GTK_WIDGET(Window));
 
@@ -401,7 +406,7 @@ void StartGui() {
 			G_CALLBACK(on_states_load_recent), NULL, NULL, G_CONNECT_AFTER);
 	widget = GTK_WIDGET(gtk_builder_get_object(builder, "other1"));
 	g_signal_connect_data(G_OBJECT(widget), "activate",
-			G_CALLBACK(on_states_load_other), NULL, NULL, G_CONNECT_AFTER);			
+			G_CALLBACK(on_states_load_other), NULL, NULL, G_CONNECT_AFTER);
 
 	widget = GTK_WIDGET(gtk_builder_get_object(builder, "GtkMenuItem_SaveSlot1"));
 	g_signal_connect_data(G_OBJECT(widget), "activate",
@@ -471,10 +476,7 @@ void StartGui() {
 #endif
 	widget = GTK_WIDGET(gtk_builder_get_object(builder, "cpu1"));
 	g_signal_connect_data(G_OBJECT(widget), "activate",
-            G_CALLBACK(OnConf_Cpu), NULL, NULL, G_CONNECT_AFTER);
-    widget = GTK_WIDGET(gtk_builder_get_object(builder, "pgxp1"));
-    g_signal_connect_data(G_OBJECT(widget), "activate",
-            G_CALLBACK(OnConf_Pgxp), NULL, NULL, G_CONNECT_AFTER);
+			G_CALLBACK(OnConf_Cpu), NULL, NULL, G_CONNECT_AFTER);
 	widget = GTK_WIDGET(gtk_builder_get_object(builder, "memory_cards1"));
 	g_signal_connect_data(G_OBJECT(widget), "activate",
 			G_CALLBACK(OnConf_Mcds), NULL, NULL, G_CONNECT_AFTER);
@@ -617,7 +619,7 @@ void OnFile_RunExe() {
 			LoadPlugins();
 			NetOpened = FALSE;
 
-			if (OpenPlugins() == -1) {
+			if (OpenPlugins("none", NULLSwitch, NULL, 1) == -1) {
 				g_free(file);
 				SysRunGui();
 			} else {
@@ -642,7 +644,7 @@ void OnFile_RunExe() {
 }
 
 void OnFile_RunCd() {
-	if (plugins_configured() == FALSE) { 
+	if (plugins_configured() == FALSE) {
 		ConfigurePlugins();
 		return;
 	}
@@ -653,7 +655,7 @@ void OnFile_RunCd() {
 	LoadPlugins();
 	NetOpened = FALSE;
 
-	if (OpenPlugins() == -1) {
+	if (OpenPlugins("none", NULLSwitch, NULL, 1) == -1) {
 		SysRunGui();
 		return;
 	}
@@ -681,7 +683,7 @@ void OnFile_RunCd() {
 }
 
 void OnFile_RunBios() {
-	if (plugins_configured() == FALSE) { 
+	if (plugins_configured() == FALSE) {
 		ConfigurePlugins();
 		return;
 	}
@@ -697,7 +699,7 @@ void OnFile_RunBios() {
 	LoadPlugins();
 	NetOpened = FALSE;
 
-	if (OpenPlugins() == -1) {
+	if (OpenPlugins("none", NULLSwitch, NULL, 1) == -1) {
 		SysRunGui();
 		return;
 	}
@@ -759,7 +761,7 @@ static gchar *Open_Iso_Proc() {
 
 	if (gtk_dialog_run(GTK_DIALOG(chooser)) == GTK_RESPONSE_ACCEPT) {
 		gchar *path = gtk_file_chooser_get_current_folder(GTK_FILE_CHOOSER(chooser));
-		
+
 		/* Workaround:
 		for some reasons gtk_file_chooser_get_current_folder return NULL
 		if a file is selected from "Recently Used" or "Searsh"*/
@@ -767,11 +769,11 @@ static gchar *Open_Iso_Proc() {
 		  strcpy(current_folder, path);
 		  g_free(path);
 		}
-		
+
 		GSList * l = gtk_file_chooser_get_filenames(GTK_FILE_CHOOSER (chooser));
 		if(l) {
 		filename = l->data;
-		
+
 		/* if the file was selected from "Recently Used" or "Searsh"
 		we need to extract the path from the filename to set it to current_folder*/
 		if(path == NULL) {
@@ -808,7 +810,7 @@ static gchar *Open_Iso_Proc() {
 void OnFile_RunImage() {
 	gchar *filename;
 
-	if (plugins_configured() == FALSE) { 
+	if (plugins_configured() == FALSE) {
 		ConfigurePlugins();
 		return;
 	}
@@ -826,7 +828,7 @@ void OnFile_RunImage() {
 	LoadPlugins();
 	NetOpened = FALSE;
 
-	if (OpenPlugins() == -1) {
+	if (OpenPlugins("none", NULLSwitch, NULL, 1) == -1) {
 		SysRunGui();
 		return;
 	}
@@ -854,14 +856,14 @@ void OnFile_RunImage() {
 }
 
 void OnEmu_Run() {
-	if (plugins_configured() == FALSE) { 
+	if (plugins_configured() == FALSE) {
 		ConfigurePlugins();
 		return;
 	}
 
 	destroy_main_window();
 
-	if (OpenPlugins() == -1) {
+	if (OpenPlugins("none", NULLSwitch, NULL, 1) == -1) {
 		SysRunGui();
 		return;
 	}
@@ -871,14 +873,14 @@ void OnEmu_Run() {
 }
 
 void OnEmu_Reset() {
-	if (plugins_configured() == FALSE) { 
+	if (plugins_configured() == FALSE) {
 		ConfigurePlugins();
 		return;
 	}
 
 	destroy_main_window();
 
-	if (OpenPlugins() == -1) {
+	if (OpenPlugins("none", NULLSwitch, NULL, 1) == -1) {
 		SysRunGui();
 		return;
 	}
@@ -911,7 +913,7 @@ void OnEmu_Shutdown() {
 void OnEmu_SwitchImage() {
 	gchar *filename;
 
-	if (plugins_configured() == FALSE) { 
+	if (plugins_configured() == FALSE) {
 		ConfigurePlugins();
 		return;
 	}
@@ -926,7 +928,7 @@ void OnEmu_SwitchImage() {
 	SetIsoFile(filename);
 	g_free(filename);
 
-	if (OpenPlugins() == -1) {
+	if (OpenPlugins("none", NULLSwitch, NULL, 1) == -1) {
 		SysRunGui();
 		return;
 	}
@@ -992,7 +994,7 @@ void state_load(gchar *state_filename) {
 	if (Window) {
 		destroy_main_window();
 
-		if (OpenPlugins() == -1) {
+		if (OpenPlugins("none", NULLSwitch, NULL, 1) == -1) {
 			SysRunGui();
 			return;
 		}
@@ -1014,6 +1016,7 @@ void state_load(gchar *state_filename) {
 
 		sprintf(Text, _("Loaded state %s."), state_filename);
 		GPU_displayText(Text);
+		writeStatusNotification(2);
 	} else {
 		sprintf(Text, _("Error loading state %s!"), state_filename);
 		GPU_displayText(Text);
@@ -1028,7 +1031,7 @@ void state_save(gchar *state_filename) {
 	if (Window) {
 		destroy_main_window();
 
-		if (OpenPlugins() == -1) {
+		if (OpenPlugins("none", NULLSwitch, NULL, 1) == -1) {
 			SysRunGui();
 			return;
 		}
@@ -1036,11 +1039,12 @@ void state_save(gchar *state_filename) {
 
 	GPU_updateLace();
 
-	if (SaveState(state_filename) == 0)
+	if (SaveState(state_filename) == 0){
 		sprintf(Text, _("Saved state %s."), state_filename);
-	else
+		writeStatusNotification(3);
+	}else{
 		sprintf(Text, _("Error saving state %s!"), state_filename);
-
+	}
 	GPU_displayText(Text);
 }
 
@@ -1139,7 +1143,7 @@ void on_states_save_other() {
 	}
 	else
 		gtk_widget_destroy(file_chooser);
-} 
+}
 
 void OnHelp_About(GtkWidget *widget, gpointer user_data) {
 	RunAboutDialog();
@@ -1179,12 +1183,12 @@ void SysMessage(const char *fmt, ...) {
 					"response",
 					G_CALLBACK (gtk_widget_destroy),
 					MsgDlg);
-							 
+
 	gtk_main();
 }
 
 void SysErrorMessage(gchar *primary, gchar *secondary) {
-	GtkWidget *message_dialog;	
+	GtkWidget *message_dialog;
 	if (!UseGui)
 		printf ("%s - %s\n", primary, secondary);
 	else {
@@ -1203,7 +1207,7 @@ void SysErrorMessage(gchar *primary, gchar *secondary) {
 }
 
 void SysInfoMessage(gchar *primary, gchar *secondary) {
-	GtkWidget *message_dialog;	
+	GtkWidget *message_dialog;
 	if (!UseGui)
 		printf ("%s - %s\n", primary, secondary);
 	else {

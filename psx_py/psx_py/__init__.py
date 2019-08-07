@@ -15,9 +15,6 @@ from PIL import Image
 
 gameCatalogue = [("kula", "/isos/kula.iso")]
 
-def interact():
-    import code
-    code.InteractiveConsole(locals=globals()).interact()
 
 class Display:
     NONE = 2
@@ -48,11 +45,11 @@ class Console:
     def parseInt(self,b):
         return int.from_bytes(b, byteorder='little')
 
-    def __init__(self, playing, start=None, gui=False, display=Display.NORMAL, debug=False):
+    def __init__(self, iso, start=None, gui=False, display=Display.NORMAL, debug=False):
         self.debug = debug
         self.control = False
         self.running = False
-        self.playing = playing
+        self.playing = iso
         self.gui = gui
         self.unique = Console.count
         Console.lastInstance = self
@@ -257,22 +254,26 @@ class Console:
         matchingGames = []
         args.append("-cfg")
         args.append(self.CONFIGHOME+"/default.cfg")
-        for g in gameCatalogue:
-            if g[0] == self.playing:
-                matchingGames.append((g[0],self.CONFIGHOME+g[1]))
+
         if self.gui:
+
             args.append("-gui")
+
             args.append("-controlPipe")
             args.append("none")
+
         elif len(matchingGames) > 0:
+
             args.append("-display")
             args.append(str(self.display))
+
             args.append("-controlPipe")
-            pipeName = "{}/ml_psxemu{}".format(os.environ['TMPDIR'] if 'TMPDIR' in os.environ else "/tmp",self.unique)
-            controlPipeName = pipeName+"-joy"
-            proceedurePipeName = pipeName+"-proc"
-            memPipeName = pipeName+"-mem"
-            args.append(pipeName)
+            root_pipe_name = "{}/ml_psxemu{}".format(os.environ['TMPDIR'] if 'TMPDIR' in os.environ else "/tmp",self.unique)
+            control_pipe_name = root_pipe_name+"-joy"
+            proc_pipe_name = root_pipe_name+"-proc"
+            mem_pipe_name = root_pipe_name+"-mem"
+            args.append(root_pipe_name)
+
             args.append("-nMemoryListeners")
             args.append(str(len(self.memoryInterest)))
             if self.playState:
@@ -280,9 +281,9 @@ class Console:
                 if os.path.exists(playstatepath):
                     args.append("-loadState")
                     args.append(playstatepath)
-            if os.path.exists(matchingGames[0][1]):
+            if os.path.isfile(os.path.expanduser(self.playing)):
                 args.append("-play")
-                args.append(matchingGames[0][1])
+                args.append(os.path.expanduser(self.playing))
                 self.debugPrint("Playing %s from ISO."%matchingGames[0][0])
             else:
                 self.debugPrint("Game ISO for %s not installed or is corrupted."%matchingGames[0][0])
@@ -309,9 +310,9 @@ class Console:
         self.proc = sub
         self.pid = sub.pid
         self.running = True
-        self.memCallbackPipe = self.attachCBPipe(memPipeName)
-        self.joyControlPipe = self.attachControlPipe(controlPipeName)
-        self.procControlPipe = self.attachControlPipe(proceedurePipeName)
+        self.memCallbackPipe = self.attachCBPipe(mem_pipe_name)
+        self.joyControlPipe = self.attachControlPipe(control_pipe_name)
+        self.procControlPipe = self.attachControlPipe(proc_pipe_name)
         self.reversePipeThread = IPCThread(self)
         self.reversePipeThread.start()
         self.control = True

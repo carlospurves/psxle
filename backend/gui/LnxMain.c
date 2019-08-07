@@ -31,9 +31,11 @@
 #include <pthread.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include "../libpcsxcore/psxmem.h"
 #include "../libpcsxcore/sio.h"
 
 #include "Linux.h"
+#include <fcntl.h>
 #include "ConfDlg.h"
 
 #ifdef ENABLE_NLS
@@ -42,12 +44,287 @@
 
 #include <X11/extensions/XTest.h>
 
+
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#define DEBUG FALSE
+
+typedef struct {
+	size_t fsize;
+	void* bytes;
+} GPUShot;
+
 enum {
 	RUN = 0,
 	RUN_CD,
 };
 
-gboolean UseGui = TRUE;
+
+
+gboolean UseGui = FALSE;
+
+
+pthread_t ProceedurePipeThread;
+
+int* audioRecordSwitch;
+char* audioRecordPath;
+char* uniquePipeValue;
+
+int stateActionRequest = 0;
+char* stateToLoad;
+
+boolean emulationIsPaused = FALSE;
+
+
+int integerStackValue(int value, int bottom){
+	return (value<<8)|(bottom&0xff);
+}
+
+void* ProceedurePipeThreadF(void* pname) {
+		FILE * fp = fopen ("/home/carlos/procPipeDebug.txt","w");
+		if (strcmp(pname, "none") == 0) pthread_exit(NULL);
+    if (DEBUG) printf("Running Proceedure Thread...\n");
+		char pipename[64];
+		sprintf(pipename, "%s-proc", pname);
+		char insbuf[1];
+		int shmid;
+		int shared_memory_setup = 0;
+	  char *shared_memory;
+		int ins_source;
+		ins_source = open((char*)pipename, O_RDONLY);
+		while(1){
+			int b = read(ins_source, insbuf, 1);
+			if (DEBUG) printf ("Have: %i\n",b);
+			if (b==0) break;
+			if (DEBUG) printf("[PROC]	%i\n", insbuf[0]);
+			int node = insbuf[0];
+			//printf ("Enter %i\n",node);
+			if (insbuf[0]==(char)1){
+				// Exit emulator
+				close(ins_source);
+				EmuShutdown();
+				ReleasePlugins();
+				freeMLAdditions();
+				StopDebugger();
+				if (DEBUG) printf("Freeing emulator...\n");
+				if (emuLog != NULL) fclose(emuLog);
+				break;
+			}else if (insbuf[0]==(char) 2){
+				// Pause Emulation
+				if (DEBUG) printf("[M]		Request Pause\n");
+				if (emulationIsPaused){
+					// We are already paused!
+					writeStatusNotification(7);
+				}
+				emulationIsPaused = TRUE;
+			}else if (insbuf[0]==(char) 3){
+				// Resume Emulation
+				if (DEBUG) printf("[M]		Request Resume\n");
+				if (!emulationIsPaused){
+					// We are already resumed!
+					writeStatusNotification(8);
+				}
+				emulationIsPaused = FALSE;
+			}else if (insbuf[0]==(char)11){
+				// Get render
+				if (DEBUG) printf("Snapshot requested.\n");
+				read(ins_source, insbuf, 1);
+				if (DEBUG) printf("Unique number is %i\n", insbuf[0]);
+				TakeGPUSnapshot(insbuf[0]);
+			}else if (insbuf[0]==(char)12){
+				// Clear shared memory for render
+				if (DEBUG) printf("You want to clear shared memory\n");
+				TakeGPUSnapshot(0);
+			}else if (insbuf[0]==(char)13){
+				// Headless way of pulling framebuffer
+				// Unused
+			}else if (insbuf[0]==(char)21){
+				// PSX memory query
+				int startindex = 0;
+				for (int i=0;i<4;i++){
+					read(ins_source, insbuf, 1);
+					startindex = integerStackValue(startindex, (int) insbuf[0]);
+				}
+
+				int length = 0;
+				for (int i=0;i<4;i++){
+					read(ins_source, insbuf, 1);
+					//printf ("B%i\n",i);
+					length = integerStackValue(length, (int) insbuf[0]);
+				}
+
+
+				read(ins_source, insbuf, 1);
+				key_t key = insbuf[0];
+
+				// Setup shared memory
+				if (shared_memory_setup == 0){
+				  if ((shmid = shmget(key, 128, IPC_CREAT | 0666)) < 0)
+				  {
+						perror("shmget");
+				    if (DEBUG) printf("Error getting shared memory id");
+						printf ("Error getting shared memory id\n",node);
+						break;
+				  }
+					shared_memory_setup = 1;
+				  // Attached shared memory
+				  if ((shared_memory = shmat(shmid, NULL, 0)) == (char *) -1)
+				  {
+						perror("shmat");
+				    if (DEBUG) printf("Error attaching shared memory id");
+						printf ("Error getting shared memory id\n",node);
+						break;
+				  }
+				}
+
+				memcpy(shared_memory, psxMemPointer(startindex), length);
+				if (DEBUG) printf("(Notified)\n");
+				writeStatusNotification(11);
+
+			}else if (insbuf[0]==(char)22){
+				// Dump memory to file
+
+				int startindex = 0;
+				for (int i=0;i<4;i++){
+					read(ins_source, insbuf, 1);
+					startindex = integerStackValue(startindex, (int) insbuf[0]);
+				}
+
+				int length = 0;
+				for (int i=0;i<4;i++){
+					read(ins_source, insbuf, 1);
+					length = integerStackValue(length, (int) insbuf[0]);
+				}
+
+				read(ins_source, insbuf, 1);
+				char sizeofstring = insbuf[0];
+				char* outputPath = malloc(sizeof(char) * (((int)sizeofstring)+1));
+				read(ins_source, outputPath, sizeofstring);
+				outputPath[sizeofstring] = '\0';
+
+				if (DEBUG) printf("Dumping %i bytes to %s\n", length, outputPath);
+				FILE* fd = fopen(outputPath, "w");
+				if (fd == NULL) {
+					if (DEBUG) printf("Failed to write to file.\n");
+					continue;
+				}
+				int wrote = fwrite(psxMemPointer(startindex), sizeof(char), length, fd);
+				if (wrote != length){
+					if (DEBUG) printf("Error writing... \n");
+				}
+				fclose(fd);
+				free(outputPath);
+				writeStatusNotification(4);
+
+			}else if (insbuf[0]==(char)23){
+				// Remove shared memory used for PSX memory query
+				if (shared_memory_setup == 1){
+					if (DEBUG) printf("[M]		Removing shared memory...\n");
+					shmdt(shmid);
+					shmctl(shmid, IPC_RMID, NULL);
+					shared_memory_setup = 0;
+				}
+			}else if (insbuf[0]==(char)24){
+				// Silence Memory Listener
+				read(ins_source, insbuf, 1);
+				int tarkey = (int) insbuf[0];
+				silenceMemoryNotification(tarkey);
+			}else if (insbuf[0]==(char)25){
+				// Unsilence Memory Listener
+				read(ins_source, insbuf, 1);
+				int tarkey = (int) insbuf[0];
+				unsilenceMemoryNotification(tarkey);
+			}else if (insbuf[0]==(char)26){
+				// Write byte to memory
+
+				int startindex = 0;
+				for (int i=0;i<4;i++){
+					read(ins_source, insbuf, 1);
+					startindex = integerStackValue(startindex, (int) insbuf[0]);
+				}
+
+				read(ins_source, insbuf, 1);
+				char value = insbuf[0];
+
+				psxMemWrite8(startindex, value);
+				writeStatusNotification(5);
+			}else if (insbuf[0]==(char)27){
+				// Drill byte to memory
+
+				int startindex = 0;
+				for (int i=0;i<4;i++){
+					read(ins_source, insbuf, 1);
+					startindex = integerStackValue(startindex, (int) insbuf[0]);
+				}
+
+				read(ins_source, insbuf, 1);
+				char value = insbuf[0];
+				read(ins_source, insbuf, 1);
+				int times = (int) insbuf[0];
+
+				for (int i=0; i<times; i++){
+					psxMemWrite8(startindex, value);
+					usleep(5000);
+				}
+				if (DEBUG) printf("Finished drilling.\n");
+				writeStatusNotification(6);
+			}else if (insbuf[0]==(char)31){
+				// Start recording audio
+				read(ins_source, insbuf, 1);
+				char sizeofstring = insbuf[0];
+				read(ins_source, audioRecordPath, sizeofstring);
+				audioRecordPath[sizeofstring] = '\0';
+				if (DEBUG) printf("Audio will record. (%s)\n", audioRecordPath);
+				*audioRecordSwitch = 1;
+			}else if (insbuf[0]==(char)32){
+				// Stop recording audio
+				if (DEBUG) printf("Audio has stopped recording.\n");
+				*audioRecordSwitch = 0;
+			}else if (insbuf[0]==(char)41){
+				// Save state
+				if (stateActionRequest != 0){
+					if (DEBUG) printf("Unable to save state, state being loaded. \n");
+					continue;
+				}
+				read(ins_source, insbuf, 1);
+				char sizeofstring = insbuf[0];
+				stateToLoad = malloc(sizeof(char) * (((int)sizeofstring)+1));
+				read(ins_source, stateToLoad, sizeofstring);
+				stateToLoad[sizeofstring] = '\0';
+				stateActionRequest = 2;
+			}else if (insbuf[0]==(char)42){
+				// Load state
+				if (stateActionRequest != 0){
+					if (DEBUG) printf("Unable to load state, state being saved. \n");
+					continue;
+				}
+				read(ins_source, insbuf, 1);
+				char sizeofstring = insbuf[0];
+				stateToLoad = malloc(sizeof(char) * (((int)sizeofstring)+1));
+				read(ins_source, stateToLoad, sizeofstring);
+				stateToLoad[sizeofstring] = '\0';
+				stateActionRequest = 1;
+			}else if (insbuf[0]==(char)43){
+				// Set GPU speed
+				int speedset = 0;
+				for (int i=0;i<4;i++){
+					read(ins_source, insbuf, 1);
+					speedset = integerStackValue(speedset, (int) insbuf[0]);
+				}
+				GPU_setSpeed(speedset/100.0);
+				writeStatusNotification(10);
+			}else if (insbuf[0]==(char)50){
+				// Debugging
+				writeStatusNotification(12);
+			}
+
+		}
+		fprintf (fp, "End of service.\n");
+   	fclose (fp);
+    pthread_exit(NULL);
+}
+
 
 static void CreateMemcard(char *filename, char *conf_mcd) {
 	gchar *mcd;
@@ -83,7 +360,7 @@ static void CheckSubDir() {
 
 	CreateHomeConfigDir(BIOS_DIR);
 	CreateHomeConfigDir(MEMCARD_DIR);
-    CreateHomeConfigDir(MEMCARD_PERGAME_DIR);
+  CreateHomeConfigDir(MEMCARD_PERGAME_DIR);
 	CreateHomeConfigDir(STATES_DIR);
 	CreateHomeConfigDir(PLUGINS_DIR);
 	CreateHomeConfigDir(PLUGINS_CFG_DIR);
@@ -251,52 +528,65 @@ int main(int argc, char *argv[]) {
 	// it may be redefined by -cfg on the command line
 	strcpy(cfgfile_basename, "pcsxr.cfg");
 
-	// read command line options
+
 	for (i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "-runcd")) runcd = RUN_CD;
-		else if (!strcmp(argv[i], "-nogui")) UseGui = FALSE;
+		else if (!strcmp(argv[i], "-gui")) UseGui = TRUE;
 		else if (!strcmp(argv[i], "-psxout")) Config.PsxOut = TRUE;
 		else if (!strcmp(argv[i], "-slowboot")) Config.SlowBoot = TRUE;
 		else if (!strcmp(argv[i], "-load")) loadst = ((argc > i+1) ? atol(argv[++i]) : 0);
-		else if (!strcmp(argv[i], "-cfg")) {
+		else if (!strcmp(argv[i], "-loadState")){
+			loadst = -2;
+			stateToLoad = argv[++i];
+		}else if (!strcmp(argv[i], "-controlPipe")){
+			char* value = argv[++i];
+			strcpy(uniquePipeValue, value);
+			validPipes = 1;
+		}else if (!strcmp(argv[i], "-nMemoryListeners")){
+			char* value = argv[++i];
+			strcpy(memoryListenersCount, value);
+			nHooks = (int) strtol(memoryListenersCount, (char **)NULL, 10);
+		}else if (!strcmp(argv[i], "-cfg")) {
 			if (i+1 >= argc) break;
 			strncpy(cfgfile_basename, argv[++i], MAXPATHLEN-100);	/* TODO buffer overruns */
 			printf("Using config file %s.\n", cfgfile_basename);
 		}
-		else if (!strcmp(argv[i], "-cdfile")) {
+		else if (!strcmp(argv[i], "-play")) {
 			char isofilename[MAXPATHLEN];
 
 			if (i+1 >= argc) break;
 			strncpy(isofilename, argv[++i], MAXPATHLEN);
 			isofilename[MAXPATHLEN] = '\0';
-			if (isofilename[0] != '/') {
-				getcwd(path, MAXPATHLEN);
-				if (strlen(path) + strlen(isofilename) + 1 < MAXPATHLEN) {
-					strcat(path, "/");
-					strcat(path, isofilename);
-					strcpy(isofilename, path);
-				} else
-					isofilename[0] = 0;
-			}
-
+			if (DEBUG) printf("Playing %s\n", isofilename);
 			SetIsoFile(isofilename);
 			runcd = RUN_CD;
+		}
+		else if (!strcmp(argv[i], "-display")) {
+			char dispval[2];
+
+			if (i+1 >= argc) break;
+			strncpy(dispval, argv[++i], 1);
+			dispval[1] = '\0';
+			dispMode = (int) strtol(dispval, (char **)NULL, 10);
+			if (DEBUG) printf("Display mode %i\n", dispMode);
 		}
 		else if (!strcmp(argv[i], "-h") ||
 			 !strcmp(argv[i], "-help") ||
 			 !strcmp(argv[i], "--help")) {
-			 printf(PACKAGE_STRING "\n");
-			 printf("%s\n", _(
+			 if (DEBUG) printf(PACKAGE_STRING "\n");
+			 if (DEBUG) printf("%s\n", _(
 							" pcsxr [options] [file]\n"
 							"\toptions:\n"
 							"\t-runcd\t\tRuns CD-ROM\n"
-							"\t-cdfile FILE\tRuns a CD image file\n"
-							"\t-nogui\t\tDon't open the GTK GUI\n"
+							"\t-play FILE\tRuns a CD image file\n"
+							"\t-gui\t\tOpen the GTK GUI\n"
 							"\t-cfg FILE\tLoads desired configuration file (default: ~/.pcsxr/pcsxr.cfg)\n"
 							"\t-psxout\t\tEnable PSX output\n"
 							"\t-slowboot\tEnable BIOS Logo\n"
 							"\t-load STATENUM\tLoads savestate STATENUM (1-9)\n"
 							"\t-h -help\tDisplay this message\n"
+							"\t-controlPipe NAME\tSet the name of the control pipes\n"
+							"\t-display NUM\tSet the display mode, default 1\n"
 							"\tfile\t\tLoads file\n"));
 			 return 0;
 		} else {
@@ -311,6 +601,18 @@ int main(int argc, char *argv[]) {
 					file[0] = 0;
 			}
 		}
+	}
+
+	if(validPipes != 1) {
+		uniquePipeValue = "none";
+	}
+	audioRecordSwitch = malloc(sizeof(int));
+	audioRecordPath = malloc(128*sizeof(char));
+
+
+	if (nHooks != 0){
+		inputHooks = malloc(sizeof(int)*nHooks*3);
+		read(STDIN_FILENO, inputHooks, sizeof(int)*nHooks*3);
 	}
 
 	strcpy(Config.Net, "Disabled");
@@ -422,6 +724,11 @@ int main(int argc, char *argv[]) {
 		psxCpu->Execute();
 	}
 
+
+	free(uniquePipeValue);
+	free(memoryListenersCount);
+	if (inputHooks != NULL) free(inputHooks);
+
 	return 0;
 }
 
@@ -461,6 +768,13 @@ int SysInit() {
 
 void SysReset() {
 	EmuReset();
+}
+
+
+void freeMLAdditions(void){
+	if (DEBUG) printf("Freeing ML additions...\n");
+	free(audioRecordSwitch);
+	free(audioRecordPath);
 }
 
 void SysClose() {
@@ -538,12 +852,38 @@ static void SysDisableScreenSaver() {
 	}
 }
 
+
 void SysUpdate() {
+
+	if (emulationIsPaused){
+		writeStatusNotification(7);
+		// Need the sleep to allow value time to change
+		while(1){
+			usleep(100000);
+			if(!emulationIsPaused) break;
+		}
+		writeStatusNotification(8);
+	}
+
 	PADhandleKey(PAD1_keypressed() );
 	PADhandleKey(PAD2_keypressed() );
-
 	SysDisableScreenSaver();
+
+	if (stateActionRequest == 0) return;
+	int req = stateActionRequest;
+	stateActionRequest = 0;
+	if (req == 1){
+		state_load(stateToLoad);
+		free(stateToLoad);
+		if (Config.Cpu == CPU_DYNAREC) psxCpu->Execute();
+	}else if (req == 2){
+		state_save(stateToLoad);
+		free(stateToLoad);
+	}
+
 }
+
+
 
 /* ADB TODO Replace RunGui() with StartGui ()*/
 void SysRunGui() {
