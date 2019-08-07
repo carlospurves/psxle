@@ -26,12 +26,11 @@
 #include "mdec.h"
 #include "gpu.h"
 #include "gte.h"
-#include "pgxp_mem.h"
 
 R3000Acpu *psxCpu = NULL;
 psxRegisters psxRegs;
 
-int psxInit() {
+int psxInit(int* inputHooks, int nHooks, char* uniquePipeName) {
 	SysPrintf(_("Running PCSXR Version %s (%s).\n"), PACKAGE_VERSION, __DATE__);
 
 #ifdef PSXREC
@@ -44,8 +43,8 @@ int psxInit() {
 
 	Log = 0;
 
-	if (psxMemInit() == -1) return -1;
-	PGXP_Init();
+	if (psxMemInit(inputHooks, nHooks, uniquePipeName) == -1) return -1;
+
     PauseDebugger();
 
 	return psxCpu->Init();
@@ -275,10 +274,4 @@ void psxJumpTest() {
 void psxExecuteBios() {
 	while (psxRegs.pc != 0x80030000)
 		psxCpu->ExecuteBlock();
-}
-
-void psxSetPGXPMode(u32 pgxpMode)
-{
-	psxCpu->SetPGXPMode(pgxpMode);
-	//psxCpu->Reset();
 }

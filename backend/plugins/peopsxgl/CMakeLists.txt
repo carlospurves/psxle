@@ -1,13 +1,21 @@
-message(STATUS "* Configuring peopsxgl")
+message("Configuring peopsxgl")
 
 include(GlibCompileResourcesSupport)
 
 #deps
+
 find_package(GLib REQUIRED)
 if(NOT GLib_FOUND)
     message(FATAL_ERROR "GLIB2 library not found")
 endif(NOT GLib_FOUND)
 include_directories(${GLib_INCLUDE_DIRS})
+
+find_package(GLEW REQUIRED)
+include_directories(${GLEW_INCLUDE_DIRS})
+
+
+
+
 
 find_package(GTK3 REQUIRED)
 if(NOT GTK3_FOUND)
@@ -39,7 +47,6 @@ set(PLUGIN_SRCS
     prim.c
     soft.c
     texture.c
-    pgxp_gpu.c
 )
 
 set(GUI_SRCS
@@ -64,7 +71,9 @@ add_custom_target(peopsxgl_resource DEPENDS ${RESOURCE_FILE})
 
 include_directories(${CMAKE_SOURCE_DIR}/libpcsxcore ${X11_X11_INCLUDE_PATH} ${X11_xf86vmode_INCLUDE_PATH} ${OPENGL_INCLUDE_DIR})
 add_library(peopsxgl MODULE ${PLUGIN_SRCS})
-target_link_libraries(peopsxgl ${X11_LIBRARIES} ${X11_Xxf86vm_LIB} ${OPENGL_gl_LIBRARY})
+target_link_libraries(peopsxgl ${X11_LIBRARIES} ${X11_Xxf86vm_LIB} ${OPENGL_gl_LIBRARY} ${GLEW_LIBRARIES})
+
+
 
 
 add_executable(cfgpeopsxgl ${GUI_SRCS} ${RESOURCE_FILE})

@@ -95,7 +95,7 @@ static void context_state_cb (pa_context *context, void *userdata)
 static void stream_state_cb (pa_stream *stream, void * userdata)
 {
      Device *dev = userdata;
-    
+
      if ((stream == NULL) || (dev == NULL))
 	  return;
 
@@ -136,7 +136,7 @@ static void stream_request_cb (pa_stream *stream, size_t length, void *userdata)
 // SETUP SOUND
 ////////////////////////////////////////////////////////////////////////
 
-void SetupSound (void)
+void SetupSound ()
 {
      int error_number;
 
@@ -320,7 +320,7 @@ unsigned long SoundGetBytesBuffered (void)
 	  //fprintf (stderr, "Not buffering.\n");
      	  return SOUNDSIZE;
      }
-     else 
+     else
      {
 	  // Buffer some sound
 	  //fprintf (stderr, "Buffering.\n");

@@ -16,8 +16,17 @@
  *                                                                         *
  ***************************************************************************/
 
-// !!! enable this, if Linux XF86VidMode is not supported: 
+// !!! enable this, if Linux XF86VidMode is not supported:
 //#define NOVMODE
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+
+#include <sys/shm.h>
+
 
 #include "stdafx.h"
 
@@ -41,6 +50,7 @@ static int iOldMode=0;
 
 #define _IN_GPU
 
+#include "rendergl.c"
 #include "externals.h"
 #include "gpu.h"
 #include "draw.h"
@@ -52,11 +62,6 @@ static int iOldMode=0;
 #include "fps.h"
 #include "key.h"
 #include "gte_accuracy.h"
-#include "pgxp_gpu.h"
-#ifdef _WINDOWS
-#include "resource.h"
-#include "ssave.h"
-#endif
 #ifdef ENABLE_NLS
 #include <libintl.h>
 #include <locale.h>
@@ -91,6 +96,8 @@ __private_extern char* PLUGLOC(char* toloc);
 #include "drawgl.h"
 #endif
 
+#define DEBUG FALSE
+
 ////////////////////////////////////////////////////////////////////////
 // PPDK developer must change libraryName field and can change revision and build
 ////////////////////////////////////////////////////////////////////////
@@ -117,6 +124,7 @@ signed   short *psxVsw;
 uint32_t       *psxVul;
 signed   int   *psxVsl;
 
+
 // macro for easy access to packet information
 #define GPUCOMMAND(x) ((x>>24) & 0xff)
 
@@ -125,9 +133,6 @@ BOOL            bNeedInterlaceUpdate=FALSE;
 BOOL            bNeedRGB24Update=FALSE;
 BOOL            bChangeWinMode=FALSE;
 
-#ifdef _WINDOWS
-extern HGLRC    GLCONTEXT;
-#endif
 
 uint32_t        ulStatusControl[256];
 
@@ -186,6 +191,13 @@ int             iFakePrimBusy = 0;
 int             iRumbleVal    = 0;
 int             iRumbleTime   = 0;
 uint32_t        vBlank=0;
+BOOL			oddLines;
+
+// These relate to the snapshot function of the Python bridge:
+int bShotLoc = 0;
+int hasAllocatedSharedMemory = 0;
+int shmid;
+int usingXWindow;
 
 ////////////////////////////////////////////////////////////////////////
 // stuff to make this a true PDK module
@@ -221,9 +233,6 @@ char * GetConfigInfos(HWND hW)
 char * GetConfigInfos(int hW)
 #endif
 {
-#ifdef _WINDOWS
- HDC hdc;HGLRC hglrc;
-#endif
  char szO[2][4]={"off","on "};
  char szTxt[256];
  char * pB=(char *)malloc(32767);
@@ -236,15 +245,6 @@ char * GetConfigInfos(int hW)
  sprintf(szTxt,"Author: %s\r\n",PluginAuthor);
  strcat(pB,szTxt);
 
-#ifdef _WINDOWS
- if(hW)
-  {
-   hdc = GetDC(hW);
-   bSetupPixelFormat(hdc);
-   hglrc = wglCreateContext(hdc);
-   wglMakeCurrent(hdc, hglrc);
-  }
-#endif
 
  sprintf(szTxt,"Card vendor: %s\r\n",(char *)glGetString(GL_VENDOR));
  strcat(pB,szTxt);
@@ -255,15 +255,6 @@ char * GetConfigInfos(int hW)
  //strcat(pB,(char *)glGetString(GL_EXTENSIONS));
  //strcat(pB,"\r\n\r\n");
 
-#ifdef _WINDOWS
- if(hW)
-  {
-   wglMakeCurrent(NULL, NULL);
-   wglDeleteContext(hglrc);
-   ReleaseDC(hW,hdc);
-  }
- //----------------------------------------------------//
-#endif
 
  if(hW && bWindowMode)
   sprintf(szTxt,"Resolution/Color:\r\n- %dx%d ",LOWORD(iWinSize),HIWORD(iWinSize));
@@ -277,12 +268,12 @@ char * GetConfigInfos(int hW)
    strcat(pB,szTxt);
    if(bChangeRes) sprintf(szTxt,"- Desktop changing [%d Bit]\r\n",iColDepth);
    else           sprintf(szTxt,"- NO desktop changing\r\n");
-  }                                                                                   
+  }
  strcat(pB,szTxt);
 
  if(iForceVSync>=0) sprintf(szTxt,"- V-Sync: %s\r\n",szO[iForceVSync]);
  else               strcpy(szTxt,"- V-Sync: Driver\r\n");
- strcat(pB,szTxt); 
+ strcat(pB,szTxt);
  sprintf(szTxt,"- Keep psx aspect ratio: %s\r\n\r\n",szO[bKeepRatio]);
  strcat(pB,szTxt);
  //----------------------------------------------------//
@@ -304,11 +295,11 @@ char * GetConfigInfos(int hW)
  else sprintf(szTxt,"- iFiltering: %d\r\n",iFilterType);
  strcat(pB,szTxt);
  sprintf(szTxt,"- Hi-Res textures: %d\r\n",iHiResTextures);
- strcat(pB,szTxt); 
+ strcat(pB,szTxt);
  if(!hW)
   {
    sprintf(szTxt,"- Palettized tex windows: %s\r\n",szO[iUsePalTextures]);
-   strcat(pB,szTxt); 
+   strcat(pB,szTxt);
   }
  sprintf(szTxt,"- VRam size: %d MBytes",iVRamSize);
  if(!hW)
@@ -362,8 +353,8 @@ char * GetConfigInfos(int hW)
    strcat(szTxt,"\r\n\r\n");
   }
  else strcpy(szTxt,"\r\n");
- 
- strcat(pB,szTxt);             
+
+ strcat(pB,szTxt);
  //----------------------------------------------------//
  sprintf(szTxt,"Misc:\r\n- Scanlines: %s",szO[iUseScanLines]);
  strcat(pB,szTxt);
@@ -382,7 +373,7 @@ char * GetConfigInfos(int hW)
  strcat(pB,szTxt);
  sprintf(szTxt,"- Screen smoothing: %s",szO[iBlurBuffer]);
  strcat(pB,szTxt);
- if(!hW && iBlurBuffer) 
+ if(!hW && iBlurBuffer)
   {
    if(gTexBlurName) strcat(pB," - supported\r\n");
    else             strcat(pB," - not supported\r\n");
@@ -409,7 +400,7 @@ void DoTextSnapShot(int iNum)
 #endif
 
  if((txtfile=fopen(szTxt,"wb"))==NULL)
-  return;                                              
+  return;
 
  pB=GetConfigInfos(0);
  if(pB)
@@ -417,101 +408,90 @@ void DoTextSnapShot(int iNum)
    fwrite(pB,strlen(pB),1,txtfile);
    free(pB);
   }
- fclose(txtfile); 
+ fclose(txtfile);
 }
 
 ////////////////////////////////////////////////////////////////////////
 // saves screen bitmap to file
 ////////////////////////////////////////////////////////////////////////
 
-void DoSnapShot(void)
-{
- unsigned char * snapshotdumpmem=NULL,* p,c;
- FILE *bmpfile;char filename[256];
- unsigned char header[0x36];int size;
- unsigned char empty[2]={0,0};int i;
- unsigned int snapshotnr = 0;
- short SnapWidth;
- short SnapHeigth;
 
- bSnapShot=FALSE;
+void DoSnapShot(){
+  if (DEBUG) printf("SCREENSHOT Int: %i\n", bShotLoc);
 
- SnapWidth  = iResX;
- SnapHeigth = iResY;
+  unsigned char * snapshotdumpmem=NULL,* p,c;
 
- size=SnapWidth * SnapHeigth * 3 + 0x38;
+  int size;
+  unsigned char empty[2]={0,0};
+  int i;
+  unsigned int snapshotnr = 0;
+  int SnapWidth;
+  int SnapHeight;
 
- if((snapshotdumpmem=(unsigned char *)
-   malloc(SnapWidth*SnapHeigth*3))==NULL)
+
+  // we use the memory id that has been passed by the Python environment
+  key_t key = bShotLoc;
+  char *shared_memory;
+
+  SnapWidth  = 640; //iResX
+  SnapHeight = 480; //iResY
+  size=SnapWidth * SnapHeight;
+
+  //size=SnapWidth * SnapHeight * 3 + 0x38;
+
+  if((snapshotdumpmem=(unsigned char *)
+   malloc(size*3))==NULL)
   return;
-    
-  // fill in proper values for BMP
- for(i=0;i<0x36;i++) header[i]=0;
- header[0]='B';
- header[1]='M';
- header[2]=(unsigned char)(size&0xff);
- header[3]=(unsigned char)((size>>8)&0xff);
- header[4]=(unsigned char)((size>>16)&0xff);
- header[5]=(unsigned char)((size>>24)&0xff);
- header[0x0a]=0x36;
- header[0x0e]=0x28;
- header[0x12]=(unsigned char)(SnapWidth%256);
- header[0x13]=(unsigned char)(SnapWidth/256);
- header[0x16]=(unsigned char)(SnapHeigth%256);
- header[0x17]=(unsigned char)(SnapHeigth/256);
- header[0x1a]=0x01;
- header[0x1c]=0x18;
- header[0x26]=0x12;
- header[0x27]=0x0B;
- header[0x2A]=0x12;
- header[0x2B]=0x0B;
 
- // increment snapshot value
- // get filename
- do
+
+  // Setup shared memory
+  if ((shmid = shmget(key, size*3, IPC_CREAT | 0666)) < 0)
   {
-   snapshotnr++;
-#ifdef _WINDOWS
-   sprintf(filename,"snap/pcsxr%04d.bmp",snapshotnr);
-#else
-   sprintf(filename,"%s/pcsxr%04d.bmp",getenv("HOME"),snapshotnr);
-#endif
-   bmpfile=fopen(filename,"rb");
-   if(bmpfile==NULL)break;
-   fclose(bmpfile);
-   if(snapshotnr==9999) break;
+    printf("Error getting shared memory id");
+    exit(1);
   }
- while(TRUE);
+  //printf("Got shared memory.\n");
+  // Attached shared memory
+  if ((shared_memory = shmat(shmid, NULL, 0)) == (char *) -1)
+  {
+    printf("Error attaching shared memory id");
+    exit(1);
+  }
 
- // try opening new snapshot file
- if((bmpfile=fopen(filename,"wb"))==NULL)
-  {free(snapshotdumpmem);return;}
 
- fwrite(header,0x36,1,bmpfile);
+  bSnapShot=FALSE;
 
- glReadPixels(0,0,SnapWidth,SnapHeigth,GL_RGB,
+
+  glReadPixels(0,0,SnapWidth,SnapHeight,GL_RGB,
                GL_UNSIGNED_BYTE,snapshotdumpmem);
- p=snapshotdumpmem;
- size=SnapWidth * SnapHeigth;
 
- for(i=0;i<size;i++,p+=3)
-  {c=*p;*p=*(p+2);*(p+2)=c;}
 
- fwrite(snapshotdumpmem,size*3,1,bmpfile);
- fwrite(empty,0x2,1,bmpfile);
- fclose(bmpfile); 
- free(snapshotdumpmem);
+  memcpy(shared_memory, snapshotdumpmem, size*3);
+  free(snapshotdumpmem);
 
- DoTextSnapShot(snapshotnr);
-#ifdef _WINDOWS
- MessageBeep((UINT)-1);
-#endif
-}       
+  hasAllocatedSharedMemory = 1;
 
-void CALLBACK GPUmakeSnapshot(void)
+  #ifdef _WINDOWS
+  MessageBeep((UINT)-1);
+  #endif
+
+}
+
+void CALLBACK GPUmakeSnapshot(int a)
 {
- bSnapShot = TRUE;
-}        
+  if (a != 0){
+    bSnapShot = TRUE;
+    if (DEBUG) printf("Awaiting snapshot...\n");
+    bShotLoc = a;
+  }else{
+    if (hasAllocatedSharedMemory > 0){
+      shmdt(shmid);
+      shmctl(shmid, IPC_RMID, NULL);
+      hasAllocatedSharedMemory = 0;
+      if (DEBUG) printf("Successfully cleared shared memory\n");
+    }
+  }
+}
 
 ////////////////////////////////////////////////////////////////////////
 // GPU INIT... here starts it all (first func called by emu)
@@ -573,163 +553,24 @@ long CALLBACK GPUinit()
  PSXDisplay.DisplayModeNew.y=0;
 
  //PreviousPSXDisplay.Height = PSXDisplay.Height = 239;
- 
+
  iDataWriteMode = DR_NORMAL;
 
  // Reset transfer values, to prevent mis-transfer of data
  memset(&VRAMWrite,0,sizeof(VRAMLoad_t));
  memset(&VRAMRead,0,sizeof(VRAMLoad_t));
- 
+
  // device initialised already !
  //lGPUstatusRet = 0x74000000;
  vBlank = 0;
+ oddLines = FALSE;
 
  STATUSREG = 0x14802000;
  GPUIsIdle;
  GPUIsReadyForCommands;
 
  return 0;
-}                             
-
-////////////////////////////////////////////////////////////////////////
-// GPU OPEN: funcs to open up the gpu display (Windows)
-////////////////////////////////////////////////////////////////////////
-
-#ifdef _WINDOWS
-
-void ChangeDesktop()                                   // change destop resolution
-{
- DEVMODE dv;long lRes,iTry=0;                       
-
- while(iTry<10)                                        // keep on hammering...
-  {
-   memset(&dv,0,sizeof(DEVMODE));
-   dv.dmSize=sizeof(DEVMODE);
-   dv.dmBitsPerPel=iColDepth;
-   dv.dmPelsWidth=iResX;
-   dv.dmPelsHeight=iResY;
-
-   dv.dmFields=DM_BITSPERPEL|DM_PELSWIDTH|DM_PELSHEIGHT;
-
-   lRes=ChangeDisplaySettings(&dv,0);                  // ...hammering the anvil
-
-   if(lRes==DISP_CHANGE_SUCCESSFUL) return;
-   iTry++;Sleep(10);
-  }
 }
-
-////////////////////////////////////////////////////////////////////////
-// OPEN interface func: attention! 
-// some emus are calling this func in their main Window thread,
-// but all other interface funcs (to draw stuff) in a different thread!
-// that's a problem, since OGL is thread safe! Therefore we cannot 
-// initialize the OGL stuff right here, we simply set a "bIsFirstFrame = TRUE"
-// flag, to initialize OGL on the first real draw call.
-// btw, we also call this open func ourselfes, each time when the user 
-// is changing between fullscreen/window mode (ENTER key)
-// btw part 2: in windows the plugin gets the window handle from the
-// main emu, and doesn't create it's own window (if it would do it,
-// some PAD or SPU plugins would not work anymore)
-////////////////////////////////////////////////////////////////////////
-
-HMENU hPSEMenu=NULL;
-
-long CALLBACK GPUopen(HWND hwndGPU)                    
-{
- HDC hdc;RECT r;DEVMODE dv;
-
- hWWindow = hwndGPU;                                   // store hwnd globally
-
- InitKeyHandler();                                     // init key handler (subclass window)
-
- if(bChangeWinMode)                                    // user wants to change fullscreen/window mode?
-  {
-   ReadWinSizeConfig();                                // -> get sizes again
-  }
- else                                                  // first real startup
-  {
-   ReadConfig();                                       // -> read config from registry
-
-   SetFrameRateConfig();                               // -> setup frame rate stuff
-  }
-
- if(iNoScreenSaver) EnableScreenSaver(FALSE);          // at least we can try 
-
-
- memset(&dv,0,sizeof(DEVMODE));
- dv.dmSize=sizeof(DEVMODE);
- EnumDisplaySettings(NULL,ENUM_CURRENT_SETTINGS,&dv);
-
- bIsFirstFrame = TRUE;                                 // flag: we have to init OGL later in windows!
-
- if(bWindowMode)                                       // win mode?
-  {
-   DWORD dw=GetWindowLong(hWWindow, GWL_STYLE);        // -> adjust wnd style (owndc needed by some stupid ogl drivers)
-   dw&=~WS_THICKFRAME;
-   dw|=WS_BORDER|WS_CAPTION|CS_OWNDC;
-   SetWindowLong(hWWindow, GWL_STYLE, dw);
-
-   hPSEMenu=GetMenu(hWWindow);                         // -> hide emu menu (if any)
-   if(hPSEMenu!=NULL) SetMenu(hWWindow,NULL);
-
-   iResX=LOWORD(iWinSize);iResY=HIWORD(iWinSize);
-   ShowWindow(hWWindow,SW_SHOWNORMAL);
-
-   MoveWindow(hWWindow,                                // -> center wnd
-      GetSystemMetrics(SM_CXFULLSCREEN)/2-iResX/2,
-      GetSystemMetrics(SM_CYFULLSCREEN)/2-iResY/2,
-      iResX+GetSystemMetrics(SM_CXFIXEDFRAME)+3,
-      iResY+GetSystemMetrics(SM_CYFIXEDFRAME)+GetSystemMetrics(SM_CYCAPTION)+3,
-      TRUE);
-   UpdateWindow(hWWindow);                             // -> let windows do some update
-
-   if(dv.dmBitsPerPel==16 || dv.dmBitsPerPel==32)      // -> overwrite user color info with desktop color info
-    iColDepth=dv.dmBitsPerPel;
-  }
- else                                                  // fullscreen mode:
-  {
-   if(dv.dmBitsPerPel!=(unsigned int)iColDepth ||      // -> check, if we have to change resolution
-      dv.dmPelsWidth !=(unsigned int)iResX ||
-      dv.dmPelsHeight!=(unsigned int)iResY)
-    bChangeRes=TRUE; else bChangeRes=FALSE;
-
-   if(bChangeRes) ChangeDesktop();                     // -> change the res (had to do an own func because of some MS 'optimizations')
-
-   SetWindowLong(hWWindow, GWL_STYLE, CS_OWNDC);       // -> adjust wnd style as well (to be sure)
-                
-   hPSEMenu=GetMenu(hWWindow);                         // -> hide menu
-   if(hPSEMenu!=NULL) SetMenu(hWWindow,NULL);
-   ShowWindow(hWWindow,SW_SHOWMAXIMIZED);              // -> max mode
-  }
-
- rRatioRect.left   = rRatioRect.top=0;
- rRatioRect.right  = iResX;
- rRatioRect.bottom = iResY;
-
- r.left=r.top=0;r.right=iResX;r.bottom=iResY;          // hack for getting a clean black window until OGL gets initialized
- hdc = GetDC(hWWindow);
- FillRect(hdc,&r,(HBRUSH)GetStockObject(BLACK_BRUSH));
- bSetupPixelFormat(hdc);
- ReleaseDC(hWWindow,hdc);
-
- bDisplayNotSet = TRUE; 
- bSetClip=TRUE;
-
- SetFixes();                                           // setup game fixes
-
- InitializeTextureStore();                             // init texture mem
-
- resetGteVertices();
-
-// lGPUstatusRet = 0x74000000;
-
-// with some emus, we could do the OGL init right here... oh my
-// if(bIsFirstFrame) GLinitialize();
-
- return 0;
-}
-
-#elif !defined (_MACGL)
 
 ////////////////////////////////////////////////////////////////////////
 // LINUX GPU OPEN: func to open up the gpu display (X stuff)
@@ -739,7 +580,7 @@ long CALLBACK GPUopen(HWND hwndGPU)
 
 char * pCaptionText=0;
 int    bFullScreen=0;
-Display              *display;
+//Display              *display;
 
 static Cursor        cursor;
 static XVisualInfo   *myvisual;
@@ -796,24 +637,8 @@ void sysdep_create_display(void)                       // create display
  XSetWindowAttributes winattr;float fxgamma=2;
  int myscreen;char gammastr[14];
  Screen * screen;XEvent event;
- XSizeHints hints;XWMHints wm_hints;
- MotifWmHints mwmhints;
  Atom mwmatom;
  Atom delwindow;
- XClassHint* classHint;
- char *glxfx;
-
- glxfx=getenv("MESA_GLX_FX");                          // 3dfx mesa fullscreen flag
- if(glxfx)
-  {
-   if(glxfx[0]=='f')                                   // -> yup, fullscreen needed
-    {
-     fx=1;                                             // -> raise flag
-     putenv("FX_GLIDE_NO_SPLASH=");
-     sprintf(gammastr,"SST_GAMMA=%2.1f",fxgamma);      // -> set gamma
-     putenv(gammastr);
-    }
-  }
 
  display=XOpenDisplay(NULL);                           // open display
  if(!display)                                          // no display?
@@ -825,48 +650,6 @@ void sysdep_create_display(void)                       // create display
 
  myscreen=DefaultScreen(display);                      // get screen id
 
-#ifdef NOVMODE
- if(bFullScreen) {fx=1;bModeChanged=0;}
-#else
- if(bFullScreen)
-  {
-   XF86VidModeModeLine mode;
-   int nmodes,iC;
-   fx=1;                                               // raise flag
-   XF86VidModeGetModeLine(display,myscreen,&iC,&mode); // get actual mode info
-   if(mode.privsize) XFree(mode.private);              // no need for private stuff
-   bModeChanged=0;                                     // init mode change flag
-   if(iResX!=mode.hdisplay || iResY!=mode.vdisplay)    // wanted mode is different?
-    {
-     XF86VidModeGetAllModeLines(display,myscreen,      // -> enum all mode infos
-                                &nmodes,&modes);
-     if(modes)                                         // -> infos got?
-      {
-       for(iC=0;iC<nmodes;++iC)                        // -> loop modes
-        {
-         if(mode.hdisplay==modes[iC]->hdisplay &&      // -> act mode found?
-            mode.vdisplay==modes[iC]->vdisplay)        //    if yes: store mode id
-          iOldMode=iC;
-
-         if(iResX==modes[iC]->hdisplay &&              // -> wanted mode found?
-            iResY==modes[iC]->vdisplay)
-          {
-           XF86VidModeSwitchToMode(display,myscreen,   // --> switch to mode
-                                   modes[iC]);
-           XF86VidModeSetViewPort(display,myscreen,0,0);
-           bModeChanged=1;                             // --> raise flag for repairing mode on close
-          }
-        }
-
-       if(bModeChanged==0)                             // -> no mode found?
-        {
-         free(modes);                                  // --> free infos
-         printf("%s", "No proper fullscreen mode found!\n"); // --> some info output
-        }
-      }
-    }
-  }
-#endif
 
  screen=DefaultScreenOfDisplay(display);
 
@@ -890,43 +673,7 @@ void sysdep_create_display(void)                       // create display
    return;
   }
 
- // pffff... much work for a simple blank cursor... oh, well...
- if(!bFullScreen) cursor=XCreateFontCursor(display,XC_left_ptr);
- else
-  {
-   Pixmap p1,p2;XImage * img;
-   XColor b,w;unsigned char * idata;
-   XGCValues GCv;
-   GC        GCc;
-
-   memset(&b,0,sizeof(XColor));
-   memset(&w,0,sizeof(XColor));
-   idata=(unsigned char *)malloc(8);
-   memset(idata,0,8);
-
-   p1=XCreatePixmap(display,RootWindow(display,myvisual->screen),8,8,1);
-   p2=XCreatePixmap(display,RootWindow(display,myvisual->screen),8,8,1);
-
-   img = XCreateImage(display,myvisual->visual,
-                      1,XYBitmap,0,idata,8,8,8,1);
-
-   GCv.function   = GXcopy;
-   GCv.foreground = ~0;
-   GCv.background =  0;
-   GCv.plane_mask = AllPlanes;
-   GCc = XCreateGC(display,p1,
-                   (GCFunction|GCForeground|GCBackground|GCPlaneMask),&GCv);
-
-   XPutImage(display, p1,GCc,img,0,0,0,0,8,8);
-   XPutImage(display, p2,GCc,img,0,0,0,0,8,8);
-   XFreeGC(display, GCc);
-
-   cursor = XCreatePixmapCursor(display,p1,p2,&b,&w,0,0);
-
-   XFreePixmap(display,p1);
-   XFreePixmap(display,p2);
-   XDestroyImage(img);                                 // will free idata as well
-  }
+  cursor=XCreateFontCursor(display,XC_left_ptr);
 
  colormap=XCreateColormap(display,                     // create colormap
                           RootWindow(display,myvisual->screen),
@@ -948,7 +695,7 @@ void sysdep_create_display(void)                       // create display
  winattr.do_not_propagate_mask=0;
  winattr.colormap=colormap;
  winattr.cursor=None;
-
+// 12345!!
  window=XCreateWindow(display,                         // create own window
              RootWindow(display,DefaultScreen(display)),
              0,0,iResX,iResY,
@@ -969,92 +716,93 @@ void sysdep_create_display(void)                       // create display
  delwindow = XInternAtom(display,"WM_DELETE_WINDOW",0);
  XSetWMProtocols(display, window, &delwindow, 1);
 
- hints.flags=PMinSize|PMaxSize;                        // hints
- if(fx) hints.flags|=USPosition|USSize;
- else   hints.flags|=PSize;
-
- hints.min_width   = hints.max_width  = hints.base_width  = iResX;
- hints.min_height  = hints.max_height = hints.base_height = iResY;
-
- wm_hints.input=1;
- wm_hints.flags=InputHint;
-
- XSetWMHints(display,window,&wm_hints);
- XSetWMNormalHints(display,window,&hints);
-
- if(!pCaptionText)
-     pCaptionText = "Pete MesaGL PSX Gpu";
-
- // set the WM_NAME and WM_CLASS of the window
-
- // set the titlebar name
- XStoreName(display, window, pCaptionText);
-
- // set the name and class hints for the window manager to use
- classHint = XAllocClassHint();
- if(classHint)
- {
-   classHint->res_name = pCaptionText;
-   classHint->res_class = pCaptionText;
- }
-
- XSetClassHint(display, window, classHint);
- XFree(classHint);
-
+//GL HERE %%%
  XDefineCursor(display,window,cursor);                 // cursor
 
- if(fx)                                                // window title bar hack
-  {
-   mwmhints.flags=MWM_HINTS_DECORATIONS;
-   mwmhints.decorations=0;
-   mwmatom=XInternAtom(display,"_MOTIF_WM_HINTS",0);
-   XChangeProperty(display,window,mwmatom,mwmatom,32,
-                   PropModeReplace,(unsigned char *)&mwmhints,4);
-  }
 
  XMapRaised(display,window);
  XClearWindow(display,window);
  XWindowEvent(display,window,ExposureMask,&event);
  glXMakeCurrent(display,window,cx);
 
-/* 
- printf("%s", glGetString(GL_VENDOR));
- printf("\n");
- printf("%s", glGetString(GL_RENDERER));
- printf("\n");
-*/
-
- if (fx)                                               // after make current: fullscreen resize
-  {
-   XResizeWindow(display,window,screen->width,screen->height);
-   hints.min_width   = hints.max_width = hints.base_width = screen->width;
-   hints.min_height= hints.max_height = hints.base_height = screen->height;
-   XSetWMNormalHints(display,window,&hints);
-
-   // set the window layer for GNOME
-   {
-    XEvent xev;
-
-    memset(&xev, 0, sizeof(xev));
-    xev.xclient.type = ClientMessage;
-    xev.xclient.serial = 0;
-    xev.xclient.send_event = 1;
-    xev.xclient.message_type = XInternAtom(display, "_NET_WM_STATE", 0);
-    xev.xclient.window = window;
-    xev.xclient.format = 32;
-    xev.xclient.data.l[0] = 1;
-    xev.xclient.data.l[1] = XInternAtom(display, "_NET_WM_STATE_FULLSCREEN", 0);
-    xev.xclient.data.l[2] = 0;
-    xev.xclient.data.l[3] = 0;
-    xev.xclient.data.l[4] = 0;
-
-    XSendEvent(display, RootWindow(display, DefaultScreen(display)), 0,
-      SubstructureRedirectMask | SubstructureNotifyMask, &xev);
-   }
-  }
 }
 
-#endif // !defined(_MACGL)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+typedef GLXContext (*glXCreateContextAttribsARBProc)(Display*, GLXFBConfig, GLXContext, Bool, const int*);
+typedef Bool (*glXMakeContextCurrentARBProc)(Display*, GLXDrawable, GLXDrawable, GLXContext);
+static glXCreateContextAttribsARBProc glXCreateContextAttribsARB = NULL;
+static glXMakeContextCurrentARBProc   glXMakeContextCurrentARB   = NULL;
+GLXPbuffer pbuffer;
+//GLXContext openGLContext;
+
+void sysdep_create_no_display(void)                       // create display
+{
+  printf("Setting up display\n");
+  glXCreateContextAttribsARB = (glXCreateContextAttribsARBProc) glXGetProcAddressARB( (const GLubyte *) "glXCreateContextAttribsARB" );
+  printf("waiting...\n");
+  glXMakeContextCurrentARB   = (glXMakeContextCurrentARBProc)   glXGetProcAddressARB( (const GLubyte *) "glXMakeContextCurrent");
+
+  printf("getting the X display\n");
+  display = XOpenDisplay(":99");
+  if (display == NULL){
+      printf("error getting the X display\n");
+  }
+  printf("Got the display.\n");
+
+  static int visualAttribs[] = {GLX_RGBA,GLX_DOUBLEBUFFER,GLX_DEPTH_SIZE,16,None};//{None};
+  int numberOfFrameBufferConfigurations;
+  GLXFBConfig *fbConfigs = glXChooseFBConfig(display, DefaultScreen(display), visualAttribs, &numberOfFrameBufferConfigurations);
+
+  int context_attribs[] = {
+      GLX_CONTEXT_MAJOR_VERSION_ARB ,3,
+      GLX_CONTEXT_MINOR_VERSION_ARB, 2,
+      GLX_CONTEXT_FLAGS_ARB, GLX_CONTEXT_DEBUG_BIT_ARB,
+      GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
+      None
+  };
+
+  printf("initialising context...\n");
+  cx = glXCreateContextAttribsARB(display, fbConfigs[0], 0, True, context_attribs);
+
+  int pBufferAttribs[] = {
+      GLX_PBUFFER_WIDTH, iResY,
+      GLX_PBUFFER_HEIGHT, iResX,
+      None
+  };
+
+  pbuffer = glXCreatePbuffer(display, fbConfigs[0], pBufferAttribs);
+  XFree(fbConfigs);
+  XSync(display, False);
+
+  window = pbuffer;
+
+  if(!glXMakeContextCurrent(display, pbuffer, pbuffer, cx)){
+    printf("error with content creation: using fallback\n");
+    usingXWindow = 1;
+    sysdep_create_display();
+  }else{
+    printf("made a context the current context\n");
+  }
+
+}
+
+
+
+
 
 #ifndef _WINDOWS
 
@@ -1064,8 +812,12 @@ extern char * pCaptionText;
 
 ////////////////////////////////////////////////////////////////////////
 
-long GPUopen(unsigned long * disp,char * CapText,char * CfgFile)
+long GPUopen(unsigned long * disp,char * CapText,char * CfgFile, int mode)
 {
+
+   printf("GPU Open...");
+  usingXWindow = mode;
+
  pCaptionText=CapText;
 #if !defined (_MACGL)
  pConfigFile=CfgFile;
@@ -1077,25 +829,33 @@ long GPUopen(unsigned long * disp,char * CapText,char * CfgFile)
 
  bIsFirstFrame = TRUE;                                 // we have to init later (well, no really... in Linux we do all in GPUopen)
 
-#if defined (_MACGL)
- unsigned long display = ulInitDisplay();
-#else
- sysdep_create_display();                              // create display
-#endif
- 
+ if (usingXWindow == 2){
+  printf("Making no display.\n");
+   sysdep_create_no_display();
+ }else{
+  printf("Making display.\n");
+   sysdep_create_display();
+ }
+
+
+
+
  InitializeTextureStore();                             // init texture mem
 
  rRatioRect.left   = rRatioRect.top=0;
  rRatioRect.right  = iResX;
  rRatioRect.bottom = iResY;
+  printf("Initialising OpenGL...\n");
 
- GLinitialize();                                       // init opengl
+ // init opengl
+ GLinitialize();
 
- if(disp)
-   *disp = (unsigned long)display;                     // return display ID to main emu
+if(disp)
+ printf("Finished making display.\n");
+ *disp = (unsigned long)display;                     // return display ID to main emu
+if(display) return 0;
+return -1;
 
- if(display) return 0;
- return -1;
 }
 
 #endif // ndef _WINDOWS
@@ -1106,29 +866,6 @@ long GPUopen(unsigned long * disp,char * CapText,char * CfgFile)
 // close
 ////////////////////////////////////////////////////////////////////////
 
-#ifdef _WINDOWS
-
-long CALLBACK GPUclose()                               // WINDOWS CLOSE
-{
- ExitKeyHandler();
-
- GLcleanup();                                          // close OGL
-
- if(bChangeRes)                                        // change res back
-  ChangeDisplaySettings(NULL,0);
-
- if(hPSEMenu)                                          // set menu again
-  SetMenu(hWWindow,hPSEMenu);
-
- if(pGfxCardScreen) free(pGfxCardScreen);              // free helper memory
- pGfxCardScreen=0;
-
- if(iNoScreenSaver) EnableScreenSaver(TRUE);           // enable screen saver again
-
- return 0;
-}
-
-#else
 
 long GPUclose()                                        // LINUX CLOSE
 {
@@ -1136,18 +873,13 @@ long GPUclose()                                        // LINUX CLOSE
 
  if(pGfxCardScreen) free(pGfxCardScreen);              // free helper memory
  pGfxCardScreen=0;
-#if defined (_MACGL)
- CloseDisplay();
-#else
  osd_close_display();                                  // destroy display
-#endif
  return 0;
 }
 
-#endif
 
 ////////////////////////////////////////////////////////////////////////
-// I shot the sheriff... last function called from emu 
+// I shot the sheriff... last function called from emu
 ////////////////////////////////////////////////////////////////////////
 
 long CALLBACK GPUshutdown()
@@ -1175,7 +907,7 @@ void PaintBlackBorders(void)
  glBegin(GL_QUADS);
 
  vertex[0].c.lcol=0xff000000;
- SETCOL(vertex[0]); 
+ SETCOL(vertex[0]);
 
  if(PreviousPSXDisplay.Range.x0)
   {
@@ -1212,22 +944,22 @@ void PaintBlackBorders(void)
 // helper to draw scanlines
 ////////////////////////////////////////////////////////////////////////
 
-static __inline void XPRIMdrawTexturedQuad(OGLVertex* vertex1, OGLVertex* vertex2, 
-                                    OGLVertex* vertex3, OGLVertex* vertex4) 
+static __inline void XPRIMdrawTexturedQuad(OGLVertex* vertex1, OGLVertex* vertex2,
+                                    OGLVertex* vertex3, OGLVertex* vertex4)
 {
 
  glBegin(GL_QUAD_STRIP);
   glTexCoord2fv(&vertex1->sow);
-  PGXP_glVertexfv(&vertex1->x);
-  
+  glVertex3fv(&vertex1->x);
+
   glTexCoord2fv(&vertex2->sow);
-  PGXP_glVertexfv(&vertex2->x);
-  
+  glVertex3fv(&vertex2->x);
+
   glTexCoord2fv(&vertex4->sow);
-  PGXP_glVertexfv(&vertex4->x);
-  
+  glVertex3fv(&vertex4->x);
+
   glTexCoord2fv(&vertex3->sow);
-  PGXP_glVertexfv(&vertex3->x);
+  glVertex3fv(&vertex3->x);
  glEnd();
 }
 
@@ -1243,7 +975,7 @@ void SetScanLines(void)
  if(bKeepRatio)
   glViewport(0,0,iResX,iResY);
 
- glDisable(GL_SCISSOR_TEST);                       
+ glDisable(GL_SCISSOR_TEST);
  glDisable(GL_ALPHA_TEST);
  if(bOldSmoothShaded) {glShadeModel(GL_FLAT);bOldSmoothShaded=FALSE;}
 
@@ -1252,7 +984,7 @@ void SetScanLines(void)
    if(!bTexEnabled)    {glEnable(GL_TEXTURE_2D);bTexEnabled=TRUE;}
    gTexName=gTexScanName;
    glBindTexture(GL_TEXTURE_2D, gTexName);
-   if(bGLBlend) glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);    
+   if(bGLBlend) glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
    if(!bBlendEnable)   {glEnable(GL_BLEND);bBlendEnable=TRUE;}
    SetScanTexTrans();
 
@@ -1282,11 +1014,11 @@ void SetScanLines(void)
    vertex[3].tow=vertex[2].tow;
 
    vertex[0].c.lcol=0xffffffff;
-   SETCOL(vertex[0]); 
+   SETCOL(vertex[0]);
 
    XPRIMdrawTexturedQuad(&vertex[0], &vertex[1], &vertex[2], &vertex[3]);
 
-   if(bGLBlend) glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, COMBINE_EXT);    
+   if(bGLBlend) glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, COMBINE_EXT);
   }
  else                                                  // typical line mode
   {
@@ -1304,7 +1036,7 @@ void SetScanLines(void)
      vertex[0].c.lcol=iScanBlend<<24;
     }
 
-   SETCOL(vertex[0]); 
+   SETCOL(vertex[0]);
 
    glCallList(uiScanLine);
   }
@@ -1313,16 +1045,14 @@ void SetScanLines(void)
  glOrtho(0,PSXDisplay.DisplayMode.x,
          PSXDisplay.DisplayMode.y, 0, -1, 1);
 
- //PGXP_SetMatrix(0, PSXDisplay.DisplayMode.x, PSXDisplay.DisplayMode.y, 0, -1, 1);
-
  if(bKeepRatio)
   glViewport(rRatioRect.left,
              iResY-(rRatioRect.top+rRatioRect.bottom),
-             rRatioRect.right, 
+             rRatioRect.right,
              rRatioRect.bottom);                         // init viewport
 
  glEnable(GL_ALPHA_TEST);
- glEnable(GL_SCISSOR_TEST);                       
+ glEnable(GL_SCISSOR_TEST);
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -1340,8 +1070,8 @@ void BlurBackBuffer(void)
  if(bOldSmoothShaded) {glShadeModel(GL_FLAT);bOldSmoothShaded=FALSE;}
  if(bBlendEnable)     {glDisable(GL_BLEND);bBlendEnable=FALSE;}
  if(!bTexEnabled)     {glEnable(GL_TEXTURE_2D);bTexEnabled=TRUE;}
- if(iZBufferDepth)    glDisable(GL_DEPTH_TEST);    
- if(bDrawDither)      glDisable(GL_DITHER); 
+ if(iZBufferDepth)    glDisable(GL_DEPTH_TEST);
+ if(bDrawDither)      glDisable(GL_DITHER);
 
  gTexName=gTexBlurName;
  glBindTexture(GL_TEXTURE_2D, gTexName);
@@ -1375,24 +1105,24 @@ void BlurBackBuffer(void)
  vertex[2].sow=vertex[1].sow;
  vertex[3].sow=0;
  vertex[3].tow=vertex[2].tow;
- 
- if(bGLBlend) glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);    
+
+ if(bGLBlend) glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
  vertex[0].c.lcol=0x7fffffff;
- SETCOL(vertex[0]); 
+ SETCOL(vertex[0]);
 
  DrawMultiBlur();                                      // draw the backbuffer texture to create blur effect
 
  glEnable(GL_ALPHA_TEST);
  glEnable(GL_SCISSOR_TEST);
- if(iZBufferDepth)  glEnable(GL_DEPTH_TEST);    
- if(bDrawDither)    glEnable(GL_DITHER);    
- if(bGLBlend) glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, COMBINE_EXT);    
+ if(iZBufferDepth)  glEnable(GL_DEPTH_TEST);
+ if(bDrawDither)    glEnable(GL_DITHER);
+ if(bGLBlend) glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, COMBINE_EXT);
 
  if(bKeepRatio)
   glViewport(rRatioRect.left,                            // re-init viewport
              iResY-(rRatioRect.top+rRatioRect.bottom),
-             rRatioRect.right, 
-             rRatioRect.bottom);            
+             rRatioRect.right,
+             rRatioRect.bottom);
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -1408,8 +1138,8 @@ void UnBlurBackBuffer(void)
  glDisable(GL_ALPHA_TEST);
  if(bBlendEnable)    {glDisable(GL_BLEND);bBlendEnable=FALSE;}
  if(!bTexEnabled)    {glEnable(GL_TEXTURE_2D);bTexEnabled=TRUE;}
- if(iZBufferDepth)    glDisable(GL_DEPTH_TEST);    
- if(bDrawDither)      glDisable(GL_DITHER); 
+ if(iZBufferDepth)    glDisable(GL_DEPTH_TEST);
+ if(bDrawDither)      glDisable(GL_DITHER);
 
  gTexName=gTexBlurName;
  glBindTexture(GL_TEXTURE_2D, gTexName);
@@ -1435,28 +1165,28 @@ void UnBlurBackBuffer(void)
  vertex[2].sow=vertex[1].sow;
  vertex[3].sow=0;
  vertex[3].tow=vertex[2].tow;
- if(bGLBlend) glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);    
+ if(bGLBlend) glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
  vertex[0].c.lcol=0xffffffff;
- SETCOL(vertex[0]); 
+ SETCOL(vertex[0]);
 
  // simply draw the backbuffer texture (without blur)
  XPRIMdrawTexturedQuad(&vertex[0], &vertex[1], &vertex[2], &vertex[3]);
 
  glEnable(GL_ALPHA_TEST);
  glEnable(GL_SCISSOR_TEST);
- if(iZBufferDepth)  glEnable(GL_DEPTH_TEST);    
+ if(iZBufferDepth)  glEnable(GL_DEPTH_TEST);
  if(bDrawDither)    glEnable(GL_DITHER);                  // dither mode
- if(bGLBlend) glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, COMBINE_EXT);    
+ if(bGLBlend) glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, COMBINE_EXT);
 
  if(bKeepRatio)
   glViewport(rRatioRect.left,
              iResY-(rRatioRect.top+rRatioRect.bottom),
-             rRatioRect.right, 
+             rRatioRect.right,
              rRatioRect.bottom);                         // init viewport
 }
 
 ////////////////////////////////////////////////////////////////////////
-// Update display (swap buffers)... called in interlaced mode on 
+// Update display (swap buffers)... called in interlaced mode on
 // every emulated vsync, otherwise whenever the displayed screen region
 // has been changed
 ////////////////////////////////////////////////////////////////////////
@@ -1468,13 +1198,6 @@ void updateDisplay(void)                               // UPDATE DISPLAY
 {
  BOOL bBlur=FALSE;
 
-#ifdef _WINDOWS
- HDC hdc=GetDC(hWWindow);                              // windows:
- wglMakeCurrent(hdc,GLCONTEXT);                        // -> make context current again
-#endif
-#if defined (_MACGL)
- BringContextForward();
-#endif
  bFakeFrontBuffer=FALSE;
  bRenderFrontBuffer=FALSE;
 
@@ -1507,7 +1230,7 @@ void updateDisplay(void)                               // UPDATE DISPLAY
    UploadScreen(TRUE);
   }
 
- if(dwActFixes&512) bCheckFF9G4(NULL);                 // special game fix for FF9 
+ if(dwActFixes&512) bCheckFF9G4(NULL);                 // special game fix for FF9
 
  if(PreviousPSXDisplay.Range.x0||                      // paint black borders around display area, if needed
     PreviousPSXDisplay.Range.y0)
@@ -1516,10 +1239,10 @@ void updateDisplay(void)                               // UPDATE DISPLAY
  if(PSXDisplay.Disabled)                               // display disabled?
   {
    // moved here
-   glDisable(GL_SCISSOR_TEST);                       
+   glDisable(GL_SCISSOR_TEST);
    glClearColor(0,0,0,128);                            // -> clear whole backbuffer
    glClear(uiBufferBits);
-   glEnable(GL_SCISSOR_TEST);                       
+   glEnable(GL_SCISSOR_TEST);
    gl_z=0.0f;
    bDisplayNotSet = TRUE;
   }
@@ -1540,8 +1263,8 @@ void updateDisplay(void)                               // UPDATE DISPLAY
  if(dwActFixes&128)                                    // special FPS limitation mode?
   {
    if(bUseFrameLimit) PCFrameCap();                    // -> ok, do it
-   if(bUseFrameSkip || ulKeybits&KEY_SHOWFPS)  
-    PCcalcfps();         
+   if(bUseFrameSkip || ulKeybits&KEY_SHOWFPS)
+    PCcalcfps();
   }
 
  if(gTexPicName) DisplayPic();                         // some gpu info picture active? display it
@@ -1559,20 +1282,14 @@ void updateDisplay(void)                               // UPDATE DISPLAY
 
  if(bUseFrameSkip)                                     // frame skipping active ?
   {
-   if(!bSkipNextFrame) 
+   if(!bSkipNextFrame)
     {
      if(iDrawnSomething)
-#ifdef _WINDOWS
-      SwapBuffers(wglGetCurrentDC());                  // -> to skip or not to skip
-#elif defined(_MACGL)
-     DoBufferSwap();
-#else
-      glXSwapBuffers(display,window);
-#endif
+      if (usingXWindow == 1) glXSwapBuffers(display,window);
     }
    if(dwActFixes&0x180)                                // -> special old frame skipping: skip max one in a row
     {
-     if((fps_skip < fFrameRateHz) && !(bSkipNextFrame)) 
+     if((fps_skip < fFrameRateHz) && !(bSkipNextFrame))
       {bSkipNextFrame = TRUE; fps_skip=fFrameRateHz;}
      else bSkipNextFrame = FALSE;
     }
@@ -1581,13 +1298,7 @@ void updateDisplay(void)                               // UPDATE DISPLAY
  else                                                  // no skip ?
   {
    if(iDrawnSomething)
-#ifdef _WINDOWS
-    SwapBuffers(wglGetCurrentDC());                    // -> swap
-#elif defined(_MACGL)
-   DoBufferSwap();
-#else
-    glXSwapBuffers(display,window);
-#endif
+      if (usingXWindow == 1) glXSwapBuffers(display,window);
   }
 
  iDrawnSomething=0;
@@ -1604,22 +1315,22 @@ void updateDisplay(void)                               // UPDATE DISPLAY
    g=((GLclampf)GREEN(lClearOnSwapColor))/255.0f;      // -> get col
    b=((GLclampf)BLUE(lClearOnSwapColor))/255.0f;
    r=((GLclampf)RED(lClearOnSwapColor))/255.0f;
-   
-   glDisable(GL_SCISSOR_TEST);                       
-   glClearColor(r,g,b,128);                            // -> clear 
+
+   glDisable(GL_SCISSOR_TEST);
+   glClearColor(r,g,b,128);                            // -> clear
    glClear(uiBufferBits);
-   glEnable(GL_SCISSOR_TEST);                       
+   glEnable(GL_SCISSOR_TEST);
    lClearOnSwap=0;                                     // -> done
   }
- else 
+ else
   {
    if(bBlur) UnBlurBackBuffer();                       // unblur buff, if blurred before
 
    if(iZBufferDepth)                                   // clear zbuffer as well (if activated)
     {
-     glDisable(GL_SCISSOR_TEST);                       
+     glDisable(GL_SCISSOR_TEST);
      glClear(GL_DEPTH_BUFFER_BIT);
-     glEnable(GL_SCISSOR_TEST);                       
+     glEnable(GL_SCISSOR_TEST);
     }
   }
  gl_z=0.0f;
@@ -1629,11 +1340,11 @@ void updateDisplay(void)                               // UPDATE DISPLAY
 
  if(bNeedUploadAfter)                                  // upload wanted?
   {
-   bNeedUploadAfter=FALSE;                           
+   bNeedUploadAfter=FALSE;
    bNeedUploadTest=FALSE;
    UploadScreen(-1);                                   // -> upload
   }
- 
+
  if(bNeedUploadTest)
   {
    bNeedUploadTest=FALSE;
@@ -1657,29 +1368,25 @@ void updateDisplay(void)                               // UPDATE DISPLAY
    int i1=0,i2=0,i3=0,i4=0;
 
    iRumbleTime--;
-   if(iRumbleTime) 
+   if(iRumbleTime)
     {
-     i1=((rand()*iRumbleVal)/RAND_MAX)-(iRumbleVal/2); 
-     i2=((rand()*iRumbleVal)/RAND_MAX)-(iRumbleVal/2); 
-     i3=((rand()*iRumbleVal)/RAND_MAX)-(iRumbleVal/2); 
-     i4=((rand()*iRumbleVal)/RAND_MAX)-(iRumbleVal/2); 
+     i1=((rand()*iRumbleVal)/RAND_MAX)-(iRumbleVal/2);
+     i2=((rand()*iRumbleVal)/RAND_MAX)-(iRumbleVal/2);
+     i3=((rand()*iRumbleVal)/RAND_MAX)-(iRumbleVal/2);
+     i4=((rand()*iRumbleVal)/RAND_MAX)-(iRumbleVal/2);
     }
 
-   glViewport(rRatioRect.left+i1,                      
+   glViewport(rRatioRect.left+i1,
               iResY-(rRatioRect.top+rRatioRect.bottom)+i2,
-              rRatioRect.right+i3, 
-              rRatioRect.bottom+i4);            
+              rRatioRect.right+i3,
+              rRatioRect.bottom+i4);
   }
-
-#ifdef _WINDOWS
- ReleaseDC(hWWindow,hdc);                              // ! important !
-#endif
 
  if(ulKeybits&KEY_RESETTEXSTORE) ResetStuff();         // reset on gpu mode changes? do it before next frame is filled
 }
 
 ////////////////////////////////////////////////////////////////////////
-// update front display: smaller update func, if something has changed 
+// update front display: smaller update func, if something has changed
 // in the frontbuffer... dirty, but hey... real men know no pain
 ////////////////////////////////////////////////////////////////////////
 
@@ -1701,26 +1408,12 @@ void updateFrontDisplay(void)
  if(gTexPicName) DisplayPic();
  if(ulKeybits&KEY_SHOWFPS) DisplayText();
 
-#ifdef _WINDOWS
-  {                                                    // windows: 
-   HDC hdc=GetDC(hWWindow);
-   wglMakeCurrent(hdc,GLCONTEXT);                      // -> make current again
-   if(iDrawnSomething)
-    SwapBuffers(wglGetCurrentDC());                    // -> swap
-   ReleaseDC(hWWindow,hdc);                            // -> ! important !
-  }
-#elif defined (_MACGL)
- if (iDrawnSomething){
-  DoBufferSwap();
- }
-#else
  if(iDrawnSomething)                                   // linux:
-  glXSwapBuffers(display,window);
-#endif
+  if (usingXWindow == 1) glXSwapBuffers(display,window);
 
  if(iBlurBuffer) UnBlurBackBuffer();
 }
-                                             
+
 ////////////////////////////////////////////////////////////////////////
 // check if update needed
 ////////////////////////////////////////////////////////////////////////
@@ -1735,7 +1428,7 @@ void ChangeDispOffsetsX(void)                          // CENTER X
 
  l*=(int)PSXDisplay.Range.x1;                          // some funky calculation
  l/=2560;lx=l;l&=0xfffffff8;
- 
+
  if(l==PreviousPSXDisplay.Range.x1) return;            // some change?
 
  sO=PreviousPSXDisplay.Range.x0;                       // store old
@@ -1760,7 +1453,7 @@ void ChangeDispOffsetsX(void)                          // CENTER X
      PreviousPSXDisplay.Range.x0=                      // -> adjust start
       PSXDisplay.DisplayMode.x-lx;
      PreviousPSXDisplay.Range.x1+=lx-l;                // -> adjust width
-    }                   
+    }
   }
 
  if(sO!=PreviousPSXDisplay.Range.x0)                   // something changed?
@@ -1781,7 +1474,7 @@ void ChangeDispOffsetsY(void)                          // CENTER Y
   {
    PreviousPSXDisplay.Range.y1=                        // -> store width
     PSXDisplay.DisplayModeNew.y;
-   
+
    sO=(PSXDisplay.Range.y0-iT-4)*PSXDisplay.Double;    // -> calc offset
    if(sO<0) sO=0;
 
@@ -1828,7 +1521,7 @@ void SetAspectRatio(void)
     r.right <rRatioRect.right)
   {
    RECT rC;
-   glClearColor(0,0,0,128);                         
+   glClearColor(0,0,0,128);
 
    if(r.right <rRatioRect.right)
     {
@@ -1855,7 +1548,7 @@ void SetAspectRatio(void)
      glScissor(rC.left,rC.top,rC.right,rC.bottom);
      glClear(uiBufferBits);
     }
-   
+
    bSetClip=TRUE;
    bDisplayNotSet=TRUE;
   }
@@ -1877,11 +1570,11 @@ void updateDisplayIfChanged(void)
 {
  BOOL bUp;
 
- if ((PSXDisplay.DisplayMode.y == PSXDisplay.DisplayModeNew.y) && 
+ if ((PSXDisplay.DisplayMode.y == PSXDisplay.DisplayModeNew.y) &&
      (PSXDisplay.DisplayMode.x == PSXDisplay.DisplayModeNew.x))
   {
-   if((PSXDisplay.RGB24      == PSXDisplay.RGB24New) && 
-      (PSXDisplay.Interlaced == PSXDisplay.InterlacedNew)) 
+   if((PSXDisplay.RGB24      == PSXDisplay.RGB24New) &&
+      (PSXDisplay.Interlaced == PSXDisplay.InterlacedNew))
       return;                                          // nothing has changed? fine, no swap buffer needed
   }
  else                                                  // some res change?
@@ -1889,14 +1582,11 @@ void updateDisplayIfChanged(void)
    glLoadIdentity();
    glOrtho(0,PSXDisplay.DisplayModeNew.x,              // -> new psx resolution
              PSXDisplay.DisplayModeNew.y, 0, -1, 1);
-
- //  PGXP_SetMatrix(0, PSXDisplay.DisplayModeNew.x, PSXDisplay.DisplayModeNew.y, 0, -1, 1);
-
    if(bKeepRatio) SetAspectRatio();
   }
 
  bDisplayNotSet = TRUE;                                // re-calc offsets/display area
- 
+
  bUp=FALSE;
  if(PSXDisplay.RGB24!=PSXDisplay.RGB24New)             // clean up textures, if rgb mode change (usually mdec on/off)
   {
@@ -1909,7 +1599,7 @@ void updateDisplayIfChanged(void)
  PSXDisplay.DisplayMode.y = PSXDisplay.DisplayModeNew.y;
  PSXDisplay.DisplayMode.x = PSXDisplay.DisplayModeNew.x;
  PSXDisplay.Interlaced    = PSXDisplay.InterlacedNew;
-    
+
  PSXDisplay.DisplayEnd.x=                              // calc new ends
   PSXDisplay.DisplayPosition.x+ PSXDisplay.DisplayMode.x;
  PSXDisplay.DisplayEnd.y=
@@ -1925,20 +1615,6 @@ void updateDisplayIfChanged(void)
 
  if(bUp) updateDisplay();                              // yeah, real update (swap buffer)
 }
-
-////////////////////////////////////////////////////////////////////////
-// window mode <-> fullscreen mode (windows)
-////////////////////////////////////////////////////////////////////////
-
-#ifdef _WINDOWS
-void ChangeWindowMode(void)
- {
-  GPUclose();
-  bWindowMode=!bWindowMode;
-  GPUopen(hWWindow);
-  bChangeWinMode=FALSE;
- }
-#endif
 
 ////////////////////////////////////////////////////////////////////////
 // swap update check (called by psx vsync function)
@@ -1969,13 +1645,13 @@ BOOL bSwapCheck(void)
 
  if (bNeedInterlaceUpdate||
      bNeedRGB24Update ||
-     bNeedUploadAfter|| 
-     bNeedUploadTest || 
+     bNeedUploadAfter||
+     bNeedUploadTest ||
      iDoAgain
     )
   {
    iDoAgain=0;
-   if(bNeedUploadAfter) 
+   if(bNeedUploadAfter)
     iDoAgain=1;
    if(bNeedUploadTest && PSXDisplay.InterlacedTest)
     iDoAgain=1;
@@ -1994,7 +1670,7 @@ BOOL bSwapCheck(void)
   }
 
  return FALSE;
-} 
+}
 
 ////////////////////////////////////////////////////////////////////////
 // gun cursor func: player=0-7, x=0-511, y=0-255
@@ -2017,7 +1693,7 @@ void CALLBACK GPUcursor(int iPlayer,int x,int y)
 }
 
 ////////////////////////////////////////////////////////////////////////
-// update lace is called every VSync. Basically we limit frame rate 
+// update lace is called every VSync. Basically we limit frame rate
 // here, and in interlaced mode we swap ogl display buffers.
 ////////////////////////////////////////////////////////////////////////
 
@@ -2025,8 +1701,8 @@ static unsigned short usFirstPos=2;
 
 void CALLBACK GPUupdateLace(void)
 {
- //if(!(dwActFixes&0x1000))                               
- // STATUSREG^=0x80000000;                               // interlaced bit toggle, if the CC game fix is not active (see gpuReadStatus)
+ if(!(dwActFixes&0x1000))
+  STATUSREG^=0x80000000;                               // interlaced bit toggle, if the CC game fix is not active (see gpuReadStatus)
 
  if(!(dwActFixes&128))                                 // normal frame limit func
   CheckFrameRate();
@@ -2038,7 +1714,7 @@ void CALLBACK GPUupdateLace(void)
 
  if(PSXDisplay.Interlaced)                             // interlaced mode?
   {
-   STATUSREG^=0x80000000;
+   //STATUSREG^=0x80000000;
    if(PSXDisplay.DisplayMode.x>0 && PSXDisplay.DisplayMode.y>0)
     {
      updateDisplay();                                  // -> swap buffers (new frame)
@@ -2053,9 +1729,6 @@ void CALLBACK GPUupdateLace(void)
    updateDisplay();
   }
 
-#if defined(_WINDOWS) || defined(_MACGL)
- if(bChangeWinMode) ChangeWindowMode();
-#endif
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -2064,6 +1737,15 @@ void CALLBACK GPUupdateLace(void)
 
 uint32_t CALLBACK GPUreadStatus(void)
 {
+ if (vBlank || oddLines == FALSE)
+  { // vblank or even lines
+   STATUSREG &= ~(0x80000000);
+  }
+ else
+  { // Oddlines and not vblank
+   STATUSREG |= 0x80000000;
+  }
+
  if(dwActFixes&0x1000)                                 // CC game fix
   {
    static int iNumRead=0;
@@ -2090,7 +1772,7 @@ uint32_t CALLBACK GPUreadStatus(void)
     }
   }
 
- return STATUSREG | (vBlank ? 0x80000000 : 0 );;
+ return STATUSREG;
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -2102,9 +1784,6 @@ void CALLBACK GPUwriteStatus(uint32_t gdata)
 {
  uint32_t lCommand=(gdata>>24)&0xff;
 
-#ifdef _WINDOWS
- if(bIsFirstFrame) GLinitialize();                     // real ogl startup (needed by some emus)
-#endif
 
  ulStatusControl[lCommand]=gdata;
 
@@ -2129,23 +1808,23 @@ void CALLBACK GPUwriteStatus(uint32_t gdata)
     return;
 
    // dis/enable display
-   case 0x03:  
+   case 0x03:
     PreviousPSXDisplay.Disabled = PSXDisplay.Disabled;
     PSXDisplay.Disabled = (gdata & 1);
 
-    if(PSXDisplay.Disabled) 
+    if(PSXDisplay.Disabled)
          STATUSREG|=GPUSTATUS_DISPLAYDISABLED;
     else STATUSREG&=~GPUSTATUS_DISPLAYDISABLED;
 
     if (iOffscreenDrawing==4 &&
-         PreviousPSXDisplay.Disabled && 
+         PreviousPSXDisplay.Disabled &&
         !(PSXDisplay.Disabled))
      {
 
       if(!PSXDisplay.RGB24)
        {
         PrepareFullScreenUpload(TRUE);
-        UploadScreen(TRUE); 
+        UploadScreen(TRUE);
         updateDisplay();
        }
      }
@@ -2166,20 +1845,20 @@ void CALLBACK GPUwriteStatus(uint32_t gdata)
     return;
 
    // setting display position
-   case 0x05: 
+   case 0x05:
     {
      short sx=(short)(gdata & 0x3ff);
      short sy;
 
      if(iGPUHeight==1024)
       {
-       if(dwGPUVersion==2) 
+       if(dwGPUVersion==2)
             sy = (short)((gdata>>12)&0x3ff);
        else sy = (short)((gdata>>10)&0x3ff);
       }
      else sy = (short)((gdata>>10)&0x3ff);             // really: 0x1ff, but we adjust it later
 
-     if (sy & 0x200) 
+     if (sy & 0x200)
       {
        sy|=0xfc00;
        PreviousPSXDisplay.DisplayModeNew.y=sy/PSXDisplay.Double;
@@ -2201,7 +1880,7 @@ void CALLBACK GPUwriteStatus(uint32_t gdata)
         }
       }
 
-     if(dwActFixes&8) 
+     if(dwActFixes&8)
       {
        if((!PSXDisplay.Interlaced) &&
           PreviousPSXDisplay.DisplayPosition.x == sx  &&
@@ -2242,11 +1921,11 @@ void CALLBACK GPUwriteStatus(uint32_t gdata)
        updateDisplay();
       }
      else
-     if(PSXDisplay.InterlacedTest && 
+     if(PSXDisplay.InterlacedTest &&
         ((PreviousPSXDisplay.DisplayPosition.x != PSXDisplay.DisplayPosition.x)||
          (PreviousPSXDisplay.DisplayPosition.y != PSXDisplay.DisplayPosition.y)))
       PSXDisplay.InterlacedTest--;
- 
+
      return;
     }
 
@@ -2270,7 +1949,7 @@ void CALLBACK GPUwriteStatus(uint32_t gdata)
     PSXDisplay.Range.y0=gdata & 0x3ff;
     PSXDisplay.Range.y1=(gdata>>10) & 0x3ff;
 
-    PSXDisplay.Height = PSXDisplay.Range.y1 - 
+    PSXDisplay.Height = PSXDisplay.Range.y1 -
                         PSXDisplay.Range.y0 +
                         PreviousPSXDisplay.DisplayModeNew.y;
 
@@ -2281,7 +1960,7 @@ void CALLBACK GPUwriteStatus(uint32_t gdata)
       updateDisplayIfChanged();
      }
     return;
- 
+
    // setting display infos
    case 0x08:
 
@@ -2292,7 +1971,7 @@ void CALLBACK GPUwriteStatus(uint32_t gdata)
     PSXDisplay.DisplayModeNew.y = PSXDisplay.Height*PSXDisplay.Double;
 
     ChangeDispOffsetsY();
-  
+
     PSXDisplay.PAL           = (gdata & 0x08)?TRUE:FALSE; // if 1 - PAL mode, else NTSC
     PSXDisplay.RGB24New      = (gdata & 0x10)?TRUE:FALSE; // if 1 - TrueColor
     PSXDisplay.InterlacedNew = (gdata & 0x20)?TRUE:FALSE; // if 1 - Interlace
@@ -2300,7 +1979,7 @@ void CALLBACK GPUwriteStatus(uint32_t gdata)
     STATUSREG&=~GPUSTATUS_WIDTHBITS;                   // clear the width bits
 
     STATUSREG|=
-               (((gdata & 0x03) << 17) | 
+               (((gdata & 0x03) << 17) |
                ((gdata & 0x40) << 10));                // set the width bits
 
     PreviousPSXDisplay.InterlacedNew=FALSE;
@@ -2316,7 +1995,7 @@ void CALLBACK GPUwriteStatus(uint32_t gdata)
 
       STATUSREG|=GPUSTATUS_INTERLACED;
      }
-    else 
+    else
      {
       PSXDisplay.InterlacedTest=0;
       STATUSREG&=~GPUSTATUS_INTERLACED;
@@ -2340,11 +2019,11 @@ void CALLBACK GPUwriteStatus(uint32_t gdata)
 
    //--------------------------------------------------//
    // ask about GPU version and other stuff
-   case 0x10: 
+   case 0x10:
 
     gdata&=0xff;
 
-    switch(gdata) 
+    switch(gdata)
      {
       case 0x02:
        GPUdataRet=ulGPUInfoVals[INFO_TW];              // tw infos
@@ -2441,7 +2120,7 @@ void CheckVRamReadEx(int x, int y, int dx, int dy)
      (dy  > PreviousPSXDisplay.DisplayPosition.y) &&
      (y   < PreviousPSXDisplay.DisplayEnd.y)))
   sArea=1;
- else 
+ else
   {
    return;
   }
@@ -2468,7 +2147,7 @@ void CheckVRamReadEx(int x, int y, int dx, int dy)
        PreviousPSXDisplay.DisplayPosition.x)==udx &&
       (PreviousPSXDisplay.DisplayEnd.y-
        PreviousPSXDisplay.DisplayPosition.y)==udy)
-    p2=(psxVuw + (1024*PreviousPSXDisplay.DisplayPosition.y) + 
+    p2=(psxVuw + (1024*PreviousPSXDisplay.DisplayPosition.y) +
         PreviousPSXDisplay.DisplayPosition.x);
   }
  else
@@ -2481,7 +2160,7 @@ void CheckVRamReadEx(int x, int y, int dx, int dy)
        PSXDisplay.DisplayPosition.x)==udx &&
       (PSXDisplay.DisplayEnd.y-
        PSXDisplay.DisplayPosition.y)==udy)
-    p2=(psxVuw + (1024*PSXDisplay.DisplayPosition.y) + 
+    p2=(psxVuw + (1024*PSXDisplay.DisplayPosition.y) +
         PSXDisplay.DisplayPosition.x);
   }
 
@@ -2525,18 +2204,19 @@ void CheckVRamReadEx(int x, int y, int dx, int dy)
   }
 
  ps=pGfxCardScreen;
- 
- if(!sArea) glReadBuffer(GL_FRONT);
+
+ if(!sArea)
+    if (usingXWindow == 1) glReadBuffer(GL_FRONT);
 
  glReadPixels(x,y,dx,dy,GL_RGB,GL_UNSIGNED_BYTE,ps);
-               
+
  if(!sArea) glReadBuffer(GL_BACK);
 
  s=0;
 
  XS=(float)dx/(float)(udx);
  YS=(float)dy/(float)(udy+1);
-    
+
  for(y=udy;y>0;y--)
   {
    for(x=0;x<udx;x++)
@@ -2566,7 +2246,7 @@ void CheckVRamReadEx(int x, int y, int dx, int dy)
 }
 
 ////////////////////////////////////////////////////////////////////////
-// vram read check (reading from card's back/frontbuffer if needed... 
+// vram read check (reading from card's back/frontbuffer if needed...
 // slow!)
 ////////////////////////////////////////////////////////////////////////
 
@@ -2591,7 +2271,7 @@ void CheckVRamRead(int x, int y, int dx, int dy,BOOL bFront)
      (dy  > PreviousPSXDisplay.DisplayPosition.y) &&
      (y   < PreviousPSXDisplay.DisplayEnd.y)))
   sArea=1;
- else 
+ else
   {
    return;
   }
@@ -2631,7 +2311,7 @@ void CheckVRamRead(int x, int y, int dx, int dy,BOOL bFront)
  if(dy>wy) {udy-=(dy-wy);dy=wy;}
  udx-=ux;
  udy-=uy;
-  
+
  p=(psxVuw + (1024*uy) + ux);
 
  if(udx<=0) return;
@@ -2673,16 +2353,17 @@ void CheckVRamRead(int x, int y, int dx, int dy,BOOL bFront)
   }
 
  ps=pGfxCardScreen;
- 
- if(bFront) glReadBuffer(GL_FRONT);
+
+ if(bFront)
+ if (usingXWindow == 1) glReadBuffer(GL_FRONT);
 
  glReadPixels(x,y,dx,dy,GL_RGB,GL_UNSIGNED_BYTE,ps);
-               
+
  if(bFront) glReadBuffer(GL_BACK);
 
  XS=(float)dx/(float)(udx);
  YS=(float)dy/(float)(udy+1);
-    
+
  for(y=udy;y>0;y--)
   {
    for(x=0;x<udx;x++)
@@ -2945,11 +2626,11 @@ ENDVRAM:
      if(iDataWriteMode==DR_VRAMTRANSFER) goto STARTVRAM;
 
      gdata=*pMem++;i++;
- 
+
      if(gpuDataC == 0)
       {
        command = (unsigned char)((gdata>>24) & 0xff);
- 
+
        if(primTableCX[command])
         {
          gpuDataC = primTableCX[command];
@@ -2973,29 +2654,22 @@ ENDVRAM:
         }
        gpuDataP++;
       }
- 
+
      if(gpuDataP == gpuDataC)
       {
        gpuDataC=gpuDataP=0;
-	   for (unsigned int i = 0; i < 4; i++)	//iCB: remove stale vertex data
-	   {
-		   vertex[i].x = vertex[i].y = 0.f;
-		   vertex[i].z = 0.95f;
-		   vertex[i].w = 1.f;
-		   vertex[i].PGXP_flag = 0;
-	   }
        primFunc[gpuCommand]((unsigned char *)gpuDataM);
 
        if(dwEmuFixes&0x0001 || dwActFixes&0x20000)     // hack for emulating "gpu busy" in some games
         iFakePrimBusy=4;
       }
-    } 
+    }
   }
 
  GPUdataRet=gdata;
 
  GPUIsReadyForCommands;
- GPUIsIdle;                
+ GPUIsIdle;
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -3009,24 +2683,6 @@ void CALLBACK GPUwriteData(uint32_t gdata)
 // call config dlg
 ////////////////////////////////////////////////////////////////////////
 
-#ifdef _WINDOWS
-
-long CALLBACK GPUconfigure(void)
-{
- HWND hWP=GetActiveWindow();
- DialogBox(hInst,MAKEINTRESOURCE(IDD_CFGDLG),
-           hWP,(DLGPROC)CfgDlgProc);
-
- return 0;
-}
-
-#elif defined(_MACGL)
-long CALLBACK GPUconfigure(void)
-{
-	DlgProc();
-	return 0;
-}
-#else
 
 void StartCfgTool(char *arg) // linux: start external cfg tool
 {
@@ -3084,7 +2740,6 @@ long CALLBACK GPUconfigure(void)
  return 0;
 }
 
-#endif // def _WINDOWS / _MACGL
 
 ////////////////////////////////////////////////////////////////////////
 // sets all kind of act fixes
@@ -3094,7 +2749,7 @@ void SetFixes(void)
 {
  ReInitFrameCap();
 
- if(dwActFixes & 0x2000) 
+ if(dwActFixes & 0x2000)
       dispWidths[4]=384;
  else dispWidths[4]=368;
 }
@@ -3134,7 +2789,6 @@ long CALLBACK GPUdmaChain(uint32_t *baseAddrL, uint32_t addr)
 
  baseAddrB = (unsigned char*) baseAddrL;
 
- uint32_t depthCount = 0;
  do
   {
    if(iGPUHeight==512) addr&=0x1FFFFC;
@@ -3146,13 +2800,7 @@ long CALLBACK GPUdmaChain(uint32_t *baseAddrL, uint32_t addr)
 
    dmaMem=addr+4;
 
-   if (count > 0)
-   {
-	   PGXP_SetAddress(dmaMem >> 2, &baseAddrL[dmaMem >> 2], count);
-	   GPUwriteDataMem(&baseAddrL[dmaMem >> 2], count);
-   }
-   else
-	   PGXP_SetDepth(depthCount++);
+   if(count>0) GPUwriteDataMem(&baseAddrL[dmaMem>>2],count);
 
    addr = baseAddrL[addr>>2]&0xffffff;
   }
@@ -3162,21 +2810,14 @@ long CALLBACK GPUdmaChain(uint32_t *baseAddrL, uint32_t addr)
 
  return 0;
 }
-           
+
 ////////////////////////////////////////////////////////////////////////
 // show about dlg
 ////////////////////////////////////////////////////////////////////////
 
 void CALLBACK GPUabout(void)
 {
-#ifdef _WINDOWS
-	HWND hWP=GetActiveWindow();                           // to be sure
-	DialogBox(hInst,MAKEINTRESOURCE(IDD_DIALOG_ABOUT), hWP,(DLGPROC)AboutDlgProc);
-#elif defined(_MACGL)
- AboutDlgProc();
-#else
 	StartCfgTool("about");
-#endif
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -3207,7 +2848,7 @@ typedef struct GPUFREEZETAG
 
 long CALLBACK GPUfreeze(uint32_t ulGetFreezeData,GPUFreeze_t * pF)
 {
- if(ulGetFreezeData==2) 
+ if(ulGetFreezeData==2)
   {
    int lSlotNum=*((int *)pF);
    if(lSlotNum<0) return 0;
@@ -3216,7 +2857,7 @@ long CALLBACK GPUfreeze(uint32_t ulGetFreezeData,GPUFreeze_t * pF)
    return 1;
   }
 
- if(!pF)                    return 0; 
+ if(!pF)                    return 0;
  if(pF->ulFreezeVersion!=1) return 0;
 
  if(ulGetFreezeData==1)
@@ -3507,10 +3148,10 @@ void CALLBACK GPUgetScreenPic(unsigned char * pMem)
 
  ps=pGfxCardScreen;
 
- glReadBuffer(GL_FRONT);
+ if (usingXWindow == 1) glReadBuffer(GL_FRONT);
 
  glReadPixels(0,0,iResX,iResY,GL_RGB,GL_UNSIGNED_BYTE,ps);
-               
+
  glReadBuffer(GL_BACK);
 
  XS=(float)iResX/128;
@@ -3587,7 +3228,7 @@ void CALLBACK GPUsetfix(uint32_t dwFixBits)
 }
 
 ////////////////////////////////////////////////////////////////////////
- 
+
 void CALLBACK GPUvisualVibration(uint32_t iSmall, uint32_t iBig)
 {
  int iVibVal;
@@ -3603,9 +3244,9 @@ void CALLBACK GPUvisualVibration(uint32_t iSmall, uint32_t iBig)
 
  iRumbleTime=15;                                       // let the rumble last 16 buffer swaps
 }
-                                                       
+
 ////////////////////////////////////////////////////////////////////////
-// main emu can set display infos (A/M/G/D) 
+// main emu can set display infos (A/M/G/D)
 ////////////////////////////////////////////////////////////////////////
 
 void CALLBACK GPUdisplayFlags(uint32_t dwFlags)
@@ -3615,5 +3256,15 @@ void CALLBACK GPUdisplayFlags(uint32_t dwFlags)
 
 void CALLBACK GPUvBlank( int val )
 {
-    vBlank = val;
+ vBlank = val;
+ oddLines = oddLines ? FALSE : TRUE; // bit changes per frame when not interlaced
+ //printf("VB %x (%x)\n", oddLines, vBlank);
+}
+
+void CALLBACK GPUhSync( int val ) {
+ // Interlaced mode - update bit every scanline
+ if (PSXDisplay.Interlaced) {
+   oddLines = (val%2 ? FALSE : TRUE);
+ }
+ //printf("HS %x (%x)\n", oddLines, vBlank);
 }

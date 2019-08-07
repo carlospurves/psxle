@@ -3,7 +3,7 @@
                              -------------------
     begin                : Sun Mar 08 2009
     copyright            : (C) 1999-2009 by Pete Bernert
-    web                  : www.pbernert.com   
+    web                  : www.pbernert.com
  ***************************************************************************/
 
 /***************************************************************************
@@ -16,13 +16,13 @@
  *                                                                         *
  ***************************************************************************/
 
-//*************************************************************************// 
+//*************************************************************************//
 // History of changes:
 //
-// 2009/03/08 - Pete  
+// 2009/03/08 - Pete
 // - generic cleanup for the Peops release
 //
-//*************************************************************************// 
+//*************************************************************************//
 
 #define _IN_CFG
 
@@ -41,7 +41,7 @@ void ReadConfigFile()
  if (pConfigFile != NULL)
   in = fopen(pConfigFile, "rb");
  else
-  in = fopen("gpuPeopsMesaGL.cfg", "rb"); 
+  in = fopen("gpuPeopsMesaGL.cfg", "rb");
 
  if (in == NULL) return;
 
@@ -55,9 +55,13 @@ void ReadConfigFile()
  if(p) iResX=atoi(p+len);
  if(iResX<10) iResX=10;
 
+ iResX = 640;
+
  strcpy(t,"\nResY");p=strstr(pB,t);if(p) {p=strstr(p,"=");len=1;}
  if(p) iResY=atoi(p+len);
  if(iResY<10) iResY=10;
+
+ iResY = 480;
 
  strcpy(t,"\nKeepRatio");p=strstr(pB,t);if(p) {p=strstr(p,"=");len=1;}
  if(p) bKeepRatio=atoi(p+len);
@@ -68,7 +72,7 @@ void ReadConfigFile()
  if(p) bForceRatio43=atoi(p+len);
  if(bForceRatio43<0) bForceRatio43=0;
  if(bForceRatio43>1) bForceRatio43=1;
- 
+
  strcpy(t,"\nScreenSmoothing");p=strstr(pB,t);if(p) {p=strstr(p,"=");len=1;}
  if(p) iBlurBuffer=atoi(p+len);
  if(iBlurBuffer<0) iBlurBuffer=0;
@@ -110,11 +114,6 @@ void ReadConfigFile()
  if(iFrameReadType>4) iFrameReadType=4;
  if(iFrameReadType==4) bFullVRam=TRUE;
  else                  bFullVRam=FALSE;
-
- strcpy(t,"\nLineHackMode");p=strstr(pB,t);if(p) {p=strstr(p,"=");len=1;}
- if(p) iLineHackMode=atoi(p+len);
- if(iLineHackMode<0) iLineHackMode=0;
- if(iLineHackMode>2) iLineHackMode=2;
 
  strcpy(t,"\nTexFilter");p=strstr(pB,t);if(p) {p=strstr(p,"=");len=1;}
  if(p) iFilterType=atoi(p+len);
@@ -207,7 +206,7 @@ void ReadConfigFile()
  strcpy(t,"\nOGLExtensions");p=strstr(pB,t);if(p) {p=strstr(p,"=");len=1;}
  if(p) iUseExts=atoi(p+len);
  if(iUseExts>1) iUseExts=1;
- 
+
  strcpy(t,"\nGteAccuracy");p=strstr(pB,t);if(p) {p=strstr(p,"=");len=1;}
  if(p) bGteAccuracy=atoi(p+len);
  if(bGteAccuracy>1) bGteAccuracy=1;
@@ -244,7 +243,6 @@ void ReadConfig(void)                                  // read config (linux fil
  bUseFixes=FALSE;
  iFrameTexType=1;
  iFrameReadType=0;
- iLineHackMode=0;
  bUse15bitMdec=FALSE;
  iShowFPS=0;
  bGteAccuracy=0;
@@ -260,7 +258,7 @@ void ReadConfig(void)                                  // read config (linux fil
  ReadConfigFile();                                     // read file
 
  if(!iColDepth)  iColDepth=32;                         // adjust color info
- if(iUseMask)    iZBufferDepth=16;                     // set zbuffer depth 
+ if(iUseMask)    iZBufferDepth=16;                     // set zbuffer depth
  else            iZBufferDepth=0;
  if(bUseFixes)   dwActFixes=dwCfgFixes;                // init game fix global
 }

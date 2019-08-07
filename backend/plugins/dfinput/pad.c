@@ -47,7 +47,7 @@ SDL_GameControllerButton controllerMap[] = {
 	SDL_CONTROLLER_BUTTON_B,
 	SDL_CONTROLLER_BUTTON_A,
 	SDL_CONTROLLER_BUTTON_X,
-	
+
 	SDL_CONTROLLER_BUTTON_GUIDE
 };
 #endif
@@ -69,7 +69,7 @@ uint32_t PSEgetLibVersion(void) {
 static int padDataLenght[] = {0, 2, 3, 1, 1, 3, 3, 3};
 void PADsetMode(const int pad, const int mode) {
 	g.PadState[pad].PadMode = mode;
-    
+
     if (g.cfg.PadDef[pad].Type == PSE_PAD_TYPE_ANALOGPAD) {
         g.PadState[pad].PadID = mode ? 0x73 : 0x41;
     }
@@ -77,7 +77,7 @@ void PADsetMode(const int pad, const int mode) {
         g.PadState[pad].PadID = (g.cfg.PadDef[pad].Type << 4) |
                                  padDataLenght[g.cfg.PadDef[pad].Type];
     }
-    
+
 	g.PadState[pad].Vib0 = 0;
 	g.PadState[pad].Vib1 = 0;
 	g.PadState[pad].VibF[0] = 0;
@@ -104,15 +104,15 @@ static pthread_t			ThreadID;
 static volatile uint8_t		TerminateThread = 0;
 
 static void *JoyThread(void *param) {
-	while (!TerminateThread) {
-		CheckJoy();
-		usleep(1000);
-	}
+	//while (!TerminateThread) {
+    CheckJoy();
+	//	usleep(1000);
+	//}
 	pthread_exit(0);
 	return NULL;
 }
 
-long PADopen(unsigned long *Disp) {
+long PADopen(unsigned long *Disp, char* pipe) {
 	g.Disp = (Display *)*Disp;
 
 	if (!g.Opened) {
@@ -123,16 +123,17 @@ long PADopen(unsigned long *Disp) {
 		} else if (SDL_Init(SDL_INIT_JOYSTICK | SDL_INIT_NOPARACHUTE) == -1) {
 			return PSE_PAD_ERR_FAILURE;
 		}
- 
+
 #if SDL_VERSION_ATLEAST(2,0,0)
 		SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
-	
-        has_haptic = 0;
-        if (SDL_InitSubSystem(SDL_INIT_HAPTIC) == 0)
-            has_haptic = 1;
+
+    has_haptic = 0;
+    if (SDL_InitSubSystem(SDL_INIT_HAPTIC) == 0)
+      has_haptic = 1;
 #endif
 
-		InitSDLJoy();
+		// START THE FAKE JOY
+		InitSDLJoy(pipe);
 		InitKeyboard();
 
 		g.KeyLeftOver = 0;
@@ -217,22 +218,22 @@ static uint8_t unk4c[2][8] = {
 	{0xFF, 0x5A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 };
 
-static uint8_t unk4d[2][8] = { 
+static uint8_t unk4d[2][8] = {
 	{0xFF, 0x5A, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
 	{0xFF, 0x5A, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 };
 
-static uint8_t stdcfg[2][8]   = { 
+static uint8_t stdcfg[2][8]   = {
 	{0xFF, 0x5A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 	{0xFF, 0x5A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 };
 
-static uint8_t stdmode[2][8]  = { 
+static uint8_t stdmode[2][8]  = {
 	{0xFF, 0x5A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 	{0xFF, 0x5A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 };
 
-static uint8_t stdmodel[2][8] = { 
+static uint8_t stdmodel[2][8] = {
 	{0xFF,
 	 0x5A,
 	 0x01, // 03 - dualshock2, 01 - dualshock
@@ -241,7 +242,7 @@ static uint8_t stdmodel[2][8] = {
 	 0x02,
 	 0x01,
 	 0x00},
-	{0xFF, 
+	{0xFF,
 	 0x5A,
 	 0x01, // 03 - dualshock2, 01 - dualshock
 	 0x02, // number of modes
@@ -250,7 +251,7 @@ static uint8_t stdmodel[2][8] = {
 	 0x01,
 	 0x00}
 };
- 
+
 #if !SDL_VERSION_ATLEAST(2,0,0) && defined(__linux__)
 /* lifted from SDL; but it's GPL as well */
 /* added ffbit, though */
@@ -280,6 +281,7 @@ static int EV_IsJoystick(int fd)
 
 static void linux_set_vibrate(int pad)
 {
+	printf("Linux set vibrate\n");
 	int jno = 0, devno, dev;
 	const char *sdlj;
 	int tjno = g.cfg.PadDef[pad].DevNum;
@@ -342,6 +344,7 @@ static void linux_set_vibrate(int pad)
 
 static int linux_vibrate(PADSTATE *pad)
 {
+	printf("VIB Been called.\n");
 	struct ff_effect ffe = { 0 };
 	struct input_event ev = { { 0 } };
 	struct timespec t;
@@ -411,6 +414,7 @@ unsigned char PADpoll(unsigned char value) {
 	uint16_t			n;
 
 	if (CurByte == 0) {
+
 		CurByte++;
 
 		// Don't enable Analog/Vibration for a standard pad
@@ -477,7 +481,7 @@ unsigned char PADpoll(unsigned char value) {
 				else if(g.PadState[CurPad].PadID == 0x12)
                 {
                     CmdLen = 6;
-                    
+
                     stdpar[CurPad][4] = g.PadState[0].MouseAxis[0][0];
                     stdpar[CurPad][5] = g.PadState[0].MouseAxis[0][1];
                 }
@@ -498,10 +502,10 @@ unsigned char PADpoll(unsigned char value) {
 
 	switch (CurCmd) {
 		case CMD_READ_DATA_AND_VIBRATE:
-			if (g.cfg.PadDef[CurPad].Type == PSE_PAD_TYPE_ANALOGPAD) {
+
+			//if (g.cfg.PadDef[CurPad].Type == PSE_PAD_TYPE_ANALOGPAD) {
 				if (CurByte == g.PadState[CurPad].Vib0) {
 					g.PadState[CurPad].VibF[0] = value;
-
 					if (g.PadState[CurPad].VibF[0] != 0 || g.PadState[CurPad].VibF[1] != 0) {
 #if !SDL_VERSION_ATLEAST(2,0,0) && defined(__linux__)
 						if (g.PadState[CurPad].VibrateDev == -1 &&
@@ -537,14 +541,14 @@ unsigned char PADpoll(unsigned char value) {
 							if (!JoyHapticRumble(CurPad, g.PadState[CurPad].VibF[0], g.PadState[CurPad].VibF[1])) {
 								//gpuVisualVibration(g.PadState[CurPad].VibF[0], g.PadState[CurPad].VibF[1]);
 							}
-						
+
 						if(gpuVisualVibration != NULL &&
 						   g.cfg.PadDef[CurPad].VisualVibration) {
 							gpuVisualVibration(g.PadState[CurPad].VibF[0], g.PadState[CurPad].VibF[1]);
 						}
 					}
 				}
-			}
+			//}
 			break;
 
 		case CMD_CONFIG_MODE:
@@ -666,7 +670,7 @@ long PADreadPort2(PadDataS *pad) {
 
 long PADkeypressed(void) {
 	long s;
-    
+
     static int frame = 0;
     if( !frame )
         UpdateInput();

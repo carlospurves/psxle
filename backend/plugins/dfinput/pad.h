@@ -89,6 +89,7 @@ __private_extern char* PLUGLOC(char* toloc);
 extern int has_haptic;
 #endif
 
+
 int JoyHapticRumble(int pad, uint32_t low, uint32_t high);
 
 enum {
@@ -158,7 +159,6 @@ typedef struct tagPadDef {
 	int8_t			DevNum;
 	uint16_t		Type;
 	uint8_t			VisualVibration;
-    uint8_t         PhysicalVibration;
 	KEYDEF			KeyDef[DKEY_TOTAL];
 	KEYDEF			AnalogDef[ANALOG_TOTAL][4];
 #if SDL_VERSION_ATLEAST(2,0,0)
@@ -260,7 +260,7 @@ uint32_t PSEgetLibType(void);
 uint32_t PSEgetLibVersion(void);
 long PADinit(long flags);
 long PADshutdown(void);
-long PADopen(unsigned long *Disp);
+long PADopen(unsigned long *Disp, char*);
 long PADclose(void);
 long PADquery(void);
 unsigned char PADstartPoll(int pad);

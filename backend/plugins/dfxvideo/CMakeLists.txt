@@ -1,4 +1,4 @@
-message(STATUS "* Configuring DFXVideo")
+message("Configuring dfxvideo")
 
 include(GlibCompileResourcesSupport)
 

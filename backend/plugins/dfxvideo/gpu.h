@@ -58,3 +58,9 @@ void           SetFixes(void);
 /////////////////////////////////////////////////////////////////////////////
 
 #endif // _GPU_INTERNALS_H
+
+typedef struct {
+    size_t fsize;
+    void* bytes;
+} GPUShot;
+

@@ -1,8 +1,9 @@
-message(STATUS "* Configuring DFInput")
+message("Configuring dfinput")
 
 include(GlibCompileResourcesSupport)
 
 #deps
+
 find_package(GLib REQUIRED)
 if(NOT GLib_FOUND)
     message(FATAL_ERROR "GLIB2 library not found")
@@ -23,12 +24,12 @@ if(NOT SDL2_FOUND)
     if(NOT SDL_FOUND)
         message(FATAL_ERROR "SDL or SDL2 library not found")
     else(NOT SDL_FOUND)
-        message(STATUS "Using SDL")
+        message("Using SDL")
         include_directories(${SDL_INCLUDE_DIR})
     endif(NOT SDL_FOUND)
 else(NOT SDL2_FOUND)
     set(USE_SDL2 1)
-    message(STATUS "Using SDL2")
+    message("Using SDL2")
     include_directories(${SDL2_INCLUDE_DIR})
 endif(NOT SDL2_FOUND)
 

@@ -3,7 +3,7 @@
                              -------------------
     begin                : Sun Mar 08 2009
     copyright            : (C) 1999-2009 by Pete Bernert
-    web                  : www.pbernert.com   
+    web                  : www.pbernert.com
  ***************************************************************************/
 
 /***************************************************************************
@@ -28,7 +28,6 @@
 #include "menu.h"
 
 #include "gte_accuracy.h"
-#include "pgxp_gpu.h"
 
 #if defined(_MACGL)
 // if you use it, you must include it
@@ -79,11 +78,11 @@
 #define ST_BFFACTRISORT    0.333f
 
 #define ST_OFFSET          0.5f;
-                
+
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////////
-// draw globals; most will be initialized again later (by config or checks) 
+// draw globals; most will be initialized again later (by config or checks)
 
 #ifdef _WINDOWS
 HDC            dcGlobal = NULL;
@@ -125,13 +124,13 @@ int            iTexQuality;
 int            iUsePalTextures=1;
 BOOL           bSnapShot=FALSE;
 BOOL           bSmallAlpha=FALSE;
-int            iShowFPS=0;
+int            iShowFPS=1;
 BOOL           bGteAccuracy;
 
 // OGL extension support
 
 int                iForceVSync=-1;
-int                iUseExts=1;
+int                iUseExts=0;
 BOOL               bGLExt;
 BOOL               bGLFastMovie=FALSE;
 BOOL               bGLSoft;
@@ -152,12 +151,12 @@ GLbitfield     uiBufferBits=GL_COLOR_BUFFER_BIT;
 ////////////////////////////////////////////////////////////////////////
 // Set OGL pixel format
 ////////////////////////////////////////////////////////////////////////
- 
+
 #ifdef _WINDOWS
 BOOL bSetupPixelFormat(HDC hDC)
 {
  int pixelformat;
- static PIXELFORMATDESCRIPTOR pfd = 
+ static PIXELFORMATDESCRIPTOR pfd =
   {
    sizeof(PIXELFORMATDESCRIPTOR),    // size of this pfd
     1,                               // version number
@@ -171,18 +170,18 @@ BOOL bSetupPixelFormat(HDC hDC)
     0,                               // shift bit ignored
     0,                               // no accumulation buffer
     0, 0, 0, 0,                      // accum bits ignored
-    0,                               // z-buffer    
+    0,                               // z-buffer
     0,
     0,                               // no auxiliary buffer
     PFD_MAIN_PLANE,                  // main layer
     0,                               // reserved
     0, 0, 0                          // layer masks ignored
   };
- 
+
  pfd.cColorBits=iColDepth;                             // set user color depth
  pfd.cDepthBits=iZBufferDepth;                         // set user zbuffer (by psx mask)
 
- if((pixelformat=ChoosePixelFormat(hDC,&pfd))==0)     
+ if((pixelformat=ChoosePixelFormat(hDC,&pfd))==0)
   {
    MessageBox(NULL,"ChoosePixelFormat failed","Error",MB_OK);
    return FALSE;
@@ -202,7 +201,7 @@ BOOL bSetupPixelFormat(HDC hDC)
 // Get extension infos (f.e. pal textures / packed pixels)
 ////////////////////////////////////////////////////////////////////////
 
-void GetExtInfos(void)                              
+void GetExtInfos(void)
 {
  BOOL bPacked=FALSE;                                   // default: no packed pixel support
 
@@ -210,7 +209,7 @@ void GetExtInfos(void)
  bGLFastMovie=FALSE;
 
  if(strstr((char *)glGetString(GL_EXTENSIONS),         // packed pixels available?
-    "GL_EXT_packed_pixels"))                          
+    "GL_EXT_packed_pixels"))
   bPacked=TRUE;                                        // -> ok
 
  if(bPacked && bUse15bitMdec)                          // packed available and 15bit mdec wanted?
@@ -235,7 +234,7 @@ void GetExtInfos(void)
 #endif
 
 #ifndef __sun
- if(iGPUHeight!=1024 &&                                // no pal textures in ZN mode (height=1024)! 
+ if(iGPUHeight!=1024 &&                                // no pal textures in ZN mode (height=1024)!
     strstr((char *)glGetString(GL_EXTENSIONS),         // otherwise: check ogl support
     "GL_EXT_paletted_texture"))
   {
@@ -275,7 +274,7 @@ void SetExtGLFuncs(void)
     strstr((char *)glGetString(GL_EXTENSIONS),         // and extension available?
     "WGL_EXT_swap_control"))
   {
-   PFNWGLSWAPINTERVALFARPROC wglSwapIntervalEXT= 
+   PFNWGLSWAPINTERVALFARPROC wglSwapIntervalEXT=
     (PFNWGLSWAPINTERVALFARPROC)wglGetProcAddress("wglSwapIntervalEXT");
 
    if(wglSwapIntervalEXT) wglSwapIntervalEXT(iForceVSync);
@@ -313,10 +312,10 @@ void SetExtGLFuncs(void)
   {
    bUseMultiPass=FALSE;bGLBlend=TRUE;                  // -> no need for 2 passes, perfect
 
-   glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, COMBINE_EXT);    
-   glTexEnvf(GL_TEXTURE_ENV, COMBINE_RGB_EXT, GL_MODULATE);     
-   glTexEnvf(GL_TEXTURE_ENV, COMBINE_ALPHA_EXT, GL_MODULATE);     
-   glTexEnvf(GL_TEXTURE_ENV, RGB_SCALE_EXT, 2.0f);    
+   glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, COMBINE_EXT);
+   glTexEnvf(GL_TEXTURE_ENV, COMBINE_RGB_EXT, GL_MODULATE);
+   glTexEnvf(GL_TEXTURE_ENV, COMBINE_ALPHA_EXT, GL_MODULATE);
+   glTexEnvf(GL_TEXTURE_ENV, RGB_SCALE_EXT, 2.0f);
   }
  else                                                  // no advanced blending wanted/available:
   {
@@ -324,19 +323,19 @@ void SetExtGLFuncs(void)
    else               bUseMultiPass=FALSE;             // -> or simple 'bright color' mode
    bGLBlend=FALSE;                                     // -> no ext blending!
 
-   glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);    
+   glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
   }
 
  //----------------------------------------------------//
  // init standard tex quality 0-2, and big alpha mode 3
 
- if(!(dwActFixes&0x4000) && iFilterType && iTexQuality>=3) 
-      bSmallAlpha=TRUE;                  
+ if(!(dwActFixes&0x4000) && iFilterType && iTexQuality>=3)
+      bSmallAlpha=TRUE;
  else bSmallAlpha=FALSE;
 
  if(bOpaquePass)                                        // opaque mode?
   {
-   if(dwActFixes&32) 
+   if(dwActFixes&32)
     {
      TCF[0]=CP8RGBA_0;
      PalTexturedColourFn=CP8RGBA;                      // -> init col func
@@ -365,25 +364,25 @@ void SetExtGLFuncs(void)
 
  switch(iTexQuality)                                   // -> quality:
   {
-   //--------------------------------------------------// 
+   //--------------------------------------------------//
    case 0:                                             // -> don't care
     giWantedRGBA=4;
     giWantedTYPE=GL_UNSIGNED_BYTE;
     break;
-   //--------------------------------------------------// 
+   //--------------------------------------------------//
    case 1:                                             // -> R4G4B4A4
     if(bGLExt)
      {
       giWantedRGBA=GL_RGBA4;
       giWantedTYPE=GL_UNSIGNED_SHORT_4_4_4_4_EXT;
       LoadSubTexFn=LoadPackedSubTexturePageSort;
-      if(bOpaquePass) 
+      if(bOpaquePass)
        {
         if(dwActFixes&32) PTCF[0]=CP4RGBA_0;
         else              PTCF[0]=XP4RGBA_0;
         PTCF[1]=XP4RGBA_1;
        }
-      else      
+      else
        {
         PTCF[0]=PTCF[1]=P4RGBA;
        }
@@ -394,20 +393,20 @@ void SetExtGLFuncs(void)
       giWantedTYPE=GL_UNSIGNED_BYTE;
      }
     break;
-   //--------------------------------------------------// 
+   //--------------------------------------------------//
    case 2:                                             // -> R5B5G5A1
     if(bGLExt)
      {
       giWantedRGBA=GL_RGB5_A1;
       giWantedTYPE=GL_UNSIGNED_SHORT_5_5_5_1_EXT;
       LoadSubTexFn=LoadPackedSubTexturePageSort;
-      if(bOpaquePass) 
+      if(bOpaquePass)
        {
         if(dwActFixes&32) PTCF[0]=CP5RGBA_0;
         else              PTCF[0]=XP5RGBA_0;
         PTCF[1]=XP5RGBA_1;
        }
-      else   
+      else
        {
         PTCF[0]=PTCF[1]=P5RGBA;
        }
@@ -417,7 +416,7 @@ void SetExtGLFuncs(void)
       giWantedRGBA=GL_RGB5_A1;giWantedTYPE=GL_UNSIGNED_BYTE;
      }
     break;
-   //--------------------------------------------------// 
+   //--------------------------------------------------//
    case 3:                                             // -> R8G8B8A8
     giWantedRGBA=GL_RGBA8;
     giWantedTYPE=GL_UNSIGNED_BYTE;
@@ -433,7 +432,7 @@ void SetExtGLFuncs(void)
      }
 
     break;
-   //--------------------------------------------------// 
+   //--------------------------------------------------//
    case 4:                                             // -> R8G8B8A8
     giWantedRGBA = GL_RGBA8;
     giWantedTYPE = GL_UNSIGNED_BYTE;
@@ -478,7 +477,7 @@ void SetExtGLFuncs(void)
      }
 
     break;
-   //--------------------------------------------------// 
+   //--------------------------------------------------//
   }
 
  bBlendEnable=FALSE;                                   // init blending: off
@@ -499,7 +498,7 @@ void SetExtGLFuncs(void)
 
 GLuint  gTexScanName=0;
 
-GLubyte texscan[4][16]= 
+GLubyte texscan[4][16]=
 {
 {R_TSP, G_TSP, B_TSP, N_TSP},
 {O_TSP, N_TSP, O_TSP, N_TSP},
@@ -553,7 +552,7 @@ void CreateScanLines(void)
          glVertex2f(0,y+1);
        glEnd();
       }
-     
+
     #endif
     glEndList();
     }
@@ -564,50 +563,39 @@ void CreateScanLines(void)
 // Initialize OGL
 ////////////////////////////////////////////////////////////////////////
 
-#ifdef _WINDOWS    
+#ifdef _WINDOWS
 HGLRC GLCONTEXT=NULL;
 #endif
 
-int GLinitialize() 
+int GLinitialize()
 {
-#ifdef _WINDOWS
- HGLRC objectRC;
- // init
- dcGlobal = GetDC(hWWindow);                           // FIRST: dc/rc stuff
- objectRC = wglCreateContext(dcGlobal); 
- GLCONTEXT=objectRC;
- wglMakeCurrent(dcGlobal, objectRC);
- // CheckWGLExtensions(dcGlobal);
- if(bWindowMode) ReleaseDC(hWWindow,dcGlobal);         // win mode: release dc again
-#endif
-#if defined (_MACGL)
- BringContextForward();
-#endif
+
+// IN LINUX:
  glViewport(rRatioRect.left,                           // init viewport by ratio rect
             iResY-(rRatioRect.top+rRatioRect.bottom),
-            rRatioRect.right, 
-            rRatioRect.bottom);         
-                                                      
+            rRatioRect.right,
+            rRatioRect.bottom);
+
+
+
  glScissor(0, 0, iResX, iResY);                        // init clipping (fullscreen)
- glEnable(GL_SCISSOR_TEST);                       
+ glEnable(GL_SCISSOR_TEST);
 
 #ifndef OWNSCALE
  glMatrixMode(GL_TEXTURE);                             // init psx tex sow and tow if not "ownscale"
  glLoadIdentity();
  glScalef(1.0f/255.99f,1.0f/255.99f,1.0f);             // geforce precision hack
-#endif 
+#endif
 
  glMatrixMode(GL_PROJECTION);                          // init projection with psx resolution
  glLoadIdentity();
  glOrtho(0,PSXDisplay.DisplayMode.x,
          PSXDisplay.DisplayMode.y, 0, -1, 1);
 
- //PGXP_SetMatrix(0, PSXDisplay.DisplayMode.x, PSXDisplay.DisplayMode.y, 0, -1, 1);
-
  if(iZBufferDepth)                                     // zbuffer?
   {
    uiBufferBits=GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT;
-   glEnable(GL_DEPTH_TEST);    
+   glEnable(GL_DEPTH_TEST);
    glDepthFunc(GL_ALWAYS);
    iDepthFunc=1;
   }
@@ -620,10 +608,10 @@ int GLinitialize()
  glClearColor(0.0f, 0.0f, 0.0f, 0.0f);                 // first buffer clear
  glClear(uiBufferBits);
 
- if(bUseLines)                                         // funny lines 
+ if(bUseLines)                                         // funny lines
   {
-   glPolygonMode(GL_FRONT, GL_LINE); 
-   glPolygonMode(GL_BACK, GL_LINE); 
+   glPolygonMode(GL_FRONT, GL_LINE);
+   glPolygonMode(GL_BACK, GL_LINE);
   }
  else                                                  // or the real filled thing
   {
@@ -631,10 +619,12 @@ int GLinitialize()
    glPolygonMode(GL_BACK, GL_FILL);
   }
 
- MakeDisplayLists();                                   // lists for menu/opaque
- GetExtInfos();                                        // get ext infos
- SetExtGLFuncs();                                      // init all kind of stuff (tex function pointers)
- 
+
+  if (usingXWindow == 1){
+     MakeDisplayLists();                                   // lists for menu/opaque
+     GetExtInfos();                                        // get ext infos
+   }
+   SetExtGLFuncs();                                      // init all kind of stuff (tex function pointers)
  glEnable(GL_ALPHA_TEST);                              // wanna alpha test
 
  if(!bUseAntiAlias)                                    // no anti-alias (default)
@@ -644,7 +634,7 @@ int GLinitialize()
    glDisable(GL_POINT_SMOOTH);
   }
  else                                                  // wanna try it? glitches galore...
-  {                    
+  {
    glHint(GL_PERSPECTIVE_CORRECTION_HINT,GL_NICEST);
    glEnable(GL_LINE_SMOOTH);
    glEnable(GL_POLYGON_SMOOTH);
@@ -661,14 +651,14 @@ int GLinitialize()
  bDrawMultiPass=FALSE;
  bTexEnabled=FALSE;
  bUsingTWin=FALSE;
-      
+
  if(bDrawDither)  glEnable(GL_DITHER);                 // dither mode
- else             glDisable(GL_DITHER); 
+ else             glDisable(GL_DITHER);
 
  glDisable(GL_FOG);                                    // turn all (currently) unused modes off
- glDisable(GL_LIGHTING);  
+ glDisable(GL_LIGHTING);
  glDisable(GL_LOGIC_OP);
- glDisable(GL_STENCIL_TEST);  
+ glDisable(GL_STENCIL_TEST);
  glDisable(GL_TEXTURE_1D);
  glDisable(GL_TEXTURE_2D);
  glDisable(GL_CULL_FACE);
@@ -680,18 +670,11 @@ int GLinitialize()
  glPixelTransferi(GL_BLUE_SCALE, 1);
  glPixelTransferi(GL_BLUE_BIAS, 0);
  glPixelTransferi(GL_ALPHA_SCALE, 1);
- glPixelTransferi(GL_ALPHA_BIAS, 0);                                                  
+ glPixelTransferi(GL_ALPHA_BIAS, 0);
 
-#ifdef _WINDOWS
-                                                       // detect Windows hw/sw mode (just for info)
- if(!strcmp("Microsoft Corporation",(LPTSTR)glGetString(GL_VENDOR)) &&
-    !strcmp("GDI Generic",          (LPTSTR)glGetString(GL_RENDERER)))
-      bGLSoft=TRUE;
- else bGLSoft=FALSE;
-#endif
 
  glFlush();                                            // we are done...
- glFinish();                           
+ glFinish();
 
  CreateScanLines();                                    // setup scanline stuff (if wanted)
 
@@ -705,7 +688,7 @@ int GLinitialize()
    szDispBuf[0]=0;
    BuildDispMenu(0);
   }
- 
+
  bIsFirstFrame = FALSE;                                // we have survived the first frame :)
 
  return 0;
@@ -715,8 +698,8 @@ int GLinitialize()
 // clean up OGL stuff
 ////////////////////////////////////////////////////////////////////////
 
-void GLcleanup() 
-{                                                     
+void GLcleanup()
+{
  KillDisplayLists();                                   // bye display lists
 
  if(iUseScanLines)                                     // scanlines used?
@@ -732,10 +715,10 @@ void GLcleanup()
 
  CleanupTextureStore();                                // bye textures
 
-#ifdef _WINDOWS 
+#ifdef _WINDOWS
  wglMakeCurrent(NULL, NULL);                           // bye context
  if(GLCONTEXT) wglDeleteContext(GLCONTEXT);
- if(!bWindowMode && dcGlobal) 
+ if(!bWindowMode && dcGlobal)
   ReleaseDC(hWWindow,dcGlobal);
 #endif
 }
@@ -752,7 +735,7 @@ void GLcleanup()
 // Offset stuff
 ////////////////////////////////////////////////////////////////////////
 
-// please note: it is hardly do-able in a hw/accel plugin to get the 
+// please note: it is hardly do-able in a hw/accel plugin to get the
 //              real psx polygon coord mapping right... the following
 //              works not to bad with many games, though
 
@@ -761,7 +744,7 @@ static __inline BOOL CheckCoord4()
  if(lx0<0)
   {
    if(((lx1-lx0)>CHKMAX_X) ||
-      ((lx2-lx0)>CHKMAX_X)) 
+      ((lx2-lx0)>CHKMAX_X))
     {
      if(lx3<0)
       {
@@ -794,7 +777,7 @@ static __inline BOOL CheckCoord4()
       }
     }
   }
- 
+
 
  if(ly0<0)
   {
@@ -946,7 +929,7 @@ void offsetline(void)
 #define VERTEX_OFFX 0.2f
 #define VERTEX_OFFY 0.2f
 
-BOOL offsetline(unsigned int* addr)
+BOOL offsetline(void)
 {
  short x0,x1,y0,y1,dx,dy;float px,py;
 
@@ -967,10 +950,10 @@ BOOL offsetline(unsigned int* addr)
  x1 = (lx1 + PSXDisplay.CumulOffset.x)+1;
  y0 = (ly0 + PSXDisplay.CumulOffset.y)+1;
  y1 = (ly1 + PSXDisplay.CumulOffset.y)+1;
- 
+
  dx=x1-x0;
  dy=y1-y0;
- 
+
  if(dx>=0)
   {
    if(dy>=0)
@@ -1006,14 +989,14 @@ BOOL offsetline(unsigned int* addr)
      else if(dx<dy) py= 0.5f;
      else           py= 0.0f;
     }
-  } 
- 
+  }
+
  vertex[0].x=(short)((float)x0-px);
  vertex[3].x=(short)((float)x0+py);
- 
+
  vertex[0].y=(short)((float)y0-py);
  vertex[3].y=(short)((float)y0-px);
- 
+
  vertex[1].x=(short)((float)x1-py);
  vertex[2].x=(short)((float)x1+px);
 
@@ -1038,14 +1021,12 @@ BOOL offsetline(unsigned int* addr)
  vertex[3].x-=VERTEX_OFFX;
  vertex[3].y-=VERTEX_OFFY;
 
- PGXP_GetVertices(addr, vertex, -VERTEX_OFFX, -VERTEX_OFFY);
-
  return FALSE;
 }
 
-///////////////////////////////////////////////////////// 
+/////////////////////////////////////////////////////////
 
-BOOL offset2(unsigned int* addr)
+BOOL offset2(void)
 {
  if(bDisplayNotSet)
   SetOGLDisplaySettings(1);
@@ -1076,14 +1057,12 @@ BOOL offset2(unsigned int* addr)
  vertex[0].y+=PSXDisplay.CumulOffset.y;
  vertex[1].y+=PSXDisplay.CumulOffset.y;
 
- PGXP_GetVertices(addr, vertex, PSXDisplay.CumulOffset.x, PSXDisplay.CumulOffset.y);
-
  return FALSE;
 }
 
-///////////////////////////////////////////////////////// 
+/////////////////////////////////////////////////////////
 
-BOOL offset3(unsigned int* addr)
+BOOL offset3(void)
 {
  if(bDisplayNotSet)
   SetOGLDisplaySettings(1);
@@ -1099,7 +1078,7 @@ BOOL offset3(unsigned int* addr)
 
    if(CheckCoord3()) return TRUE;
   }
-  
+
  if(!getGteVertex(lx0, ly0, &vertex[0].x, &vertex[0].y))
  {
 	vertex[0].x=lx0;
@@ -1123,14 +1102,12 @@ BOOL offset3(unsigned int* addr)
  vertex[1].y+=PSXDisplay.CumulOffset.y;
  vertex[2].y+=PSXDisplay.CumulOffset.y;
 
- PGXP_GetVertices(addr, vertex, PSXDisplay.CumulOffset.x, PSXDisplay.CumulOffset.y);
-
  return FALSE;
 }
 
-///////////////////////////////////////////////////////// 
+/////////////////////////////////////////////////////////
 
-BOOL offset4(unsigned int* addr)
+BOOL offset4(void)
 {
  if(bDisplayNotSet)
   SetOGLDisplaySettings(1);
@@ -1179,14 +1156,12 @@ BOOL offset4(unsigned int* addr)
  vertex[2].y+=PSXDisplay.CumulOffset.y;
  vertex[3].y+=PSXDisplay.CumulOffset.y;
 
- PGXP_GetVertices(addr, vertex, PSXDisplay.CumulOffset.x, PSXDisplay.CumulOffset.y);
-
  return FALSE;
 }
 
-///////////////////////////////////////////////////////// 
+/////////////////////////////////////////////////////////
 
-void offsetST(unsigned int* addr)
+void offsetST(void)
 {
  if(bDisplayNotSet)
   SetOGLDisplaySettings(1);
@@ -1216,11 +1191,9 @@ void offsetST(unsigned int* addr)
  vertex[1].y=ly1+PSXDisplay.CumulOffset.y;
  vertex[2].y=ly2+PSXDisplay.CumulOffset.y;
  vertex[3].y=ly3+PSXDisplay.CumulOffset.y;
-
- PGXP_GetVertices(addr, vertex, PSXDisplay.CumulOffset.x, PSXDisplay.CumulOffset.y);
 }
 
-///////////////////////////////////////////////////////// 
+/////////////////////////////////////////////////////////
 
 void offsetScreenUpload(int Position)
 {
@@ -1282,14 +1255,14 @@ void offsetScreenUpload(int Position)
    gl_z+=0.00004f;
   }
 }
- 
-///////////////////////////////////////////////////////// 
 
-void offsetBlk(unsigned int* addr)
+/////////////////////////////////////////////////////////
+
+void offsetBlk(void)
 {
  if(bDisplayNotSet)
   SetOGLDisplaySettings(1);
-                                            
+
  vertex[0].x=lx0-PSXDisplay.GDrawOffset.x + PreviousPSXDisplay.Range.x0;
  vertex[1].x=lx1-PSXDisplay.GDrawOffset.x + PreviousPSXDisplay.Range.x0;
  vertex[2].x=lx2-PSXDisplay.GDrawOffset.x + PreviousPSXDisplay.Range.x0;
@@ -1298,8 +1271,6 @@ void offsetBlk(unsigned int* addr)
  vertex[1].y=ly1-PSXDisplay.GDrawOffset.y + PreviousPSXDisplay.Range.y0;
  vertex[2].y=ly2-PSXDisplay.GDrawOffset.y + PreviousPSXDisplay.Range.y0;
  vertex[3].y=ly3-PSXDisplay.GDrawOffset.y + PreviousPSXDisplay.Range.y0;
-
- PGXP_GetVertices(addr, vertex, PreviousPSXDisplay.Range.x0, PreviousPSXDisplay.Range.y0);
 
  if(iUseMask)
   {
@@ -1356,7 +1327,7 @@ void assignTextureVRAMWrite(void)
 GLuint  gLastTex=0;
 GLuint  gLastFMode=(GLuint)-1;
 
-///////////////////////////////////////////////////////// 
+/////////////////////////////////////////////////////////
 
 void assignTextureSprite(void)
 {
@@ -1368,7 +1339,7 @@ void assignTextureSprite(void)
    vertex[2].tow=vertex[3].tow=(float)sSprite_vy2/TWin.VScaleFactor;
    gLastTex=gTexName;
 
-   if(iFilterType>0 && iFilterType<3 && iHiResTextures!=2) 
+   if(iFilterType>0 && iFilterType<3 && iHiResTextures!=2)
     {
      float fxmin=65536.0f,fxmax=0.0f,fymin=65536.0f,fymax=0.0f;int i;
 
@@ -1377,7 +1348,7 @@ void assignTextureSprite(void)
        if(vertex[i].sow<fxmin) fxmin=vertex[i].sow;
        if(vertex[i].tow<fymin) fymin=vertex[i].tow;
        if(vertex[i].sow>fxmax) fxmax=vertex[i].sow;
-       if(vertex[i].tow>fymax) fymax=vertex[i].tow; 
+       if(vertex[i].tow>fymax) fymax=vertex[i].tow;
       }
 
      for(i=0;i<4;i++)
@@ -1407,7 +1378,7 @@ void assignTextureSprite(void)
    vertex[2].tow=vertex[3].tow=(float)sSprite_vy2  / ST_FACSPRITE;
 
 #else
- 
+
    vertex[0].sow=vertex[3].sow=gl_ux[0];
    vertex[1].sow=vertex[2].sow=sSprite_ux2;
    vertex[0].tow=vertex[1].tow=gl_vy[0];
@@ -1415,7 +1386,7 @@ void assignTextureSprite(void)
 
 #endif
 
-   if(iFilterType>2) 
+   if(iFilterType>2)
     {
      if(gLastTex!=gTexName || gLastFMode!=0)
       {
@@ -1426,14 +1397,14 @@ void assignTextureSprite(void)
     }
   }
 
- if(usMirror & 0x1000) 
+ if(usMirror & 0x1000)
   {
    vertex[0].sow=vertex[1].sow;
    vertex[1].sow=vertex[2].sow=vertex[3].sow;
    vertex[3].sow=vertex[0].sow;
   }
 
- if(usMirror & 0x2000) 
+ if(usMirror & 0x2000)
   {
    vertex[0].tow=vertex[3].tow;
    vertex[2].tow=vertex[3].tow=vertex[1].tow;
@@ -1442,7 +1413,7 @@ void assignTextureSprite(void)
 
 }
 
-///////////////////////////////////////////////////////// 
+/////////////////////////////////////////////////////////
 
 void assignTexture3(void)
 {
@@ -1475,7 +1446,7 @@ void assignTexture3(void)
    vertex[2].tow=gl_vy[2];
 #endif
 
-   if(iFilterType>2) 
+   if(iFilterType>2)
     {
      if(gLastTex!=gTexName || gLastFMode!=1)
       {
@@ -1485,7 +1456,7 @@ void assignTexture3(void)
       }
     }
 
-   if(iFilterType) 
+   if(iFilterType)
     {
      float fxmin=256.0f,fxmax=0.0f,fymin=256.0f,fymax=0.0f;int i;
      for(i=0;i<3;i++)
@@ -1493,7 +1464,7 @@ void assignTexture3(void)
        if(vertex[i].sow<fxmin) fxmin=vertex[i].sow;
        if(vertex[i].tow<fymin) fymin=vertex[i].tow;
        if(vertex[i].sow>fxmax) fxmax=vertex[i].sow;
-       if(vertex[i].tow>fymax) fymax=vertex[i].tow; 
+       if(vertex[i].tow>fymax) fymax=vertex[i].tow;
       }
 
      for(i=0;i<3;i++)
@@ -1507,7 +1478,7 @@ void assignTexture3(void)
   }
 }
 
-///////////////////////////////////////////////////////// 
+/////////////////////////////////////////////////////////
 
 void assignTexture4(void)
 {
@@ -1545,7 +1516,7 @@ void assignTexture4(void)
    vertex[3].tow=gl_vy[3];
 #endif
 
-   if(iFilterType>2) 
+   if(iFilterType>2)
     {
      if(gLastTex!=gTexName || gLastFMode!=1)
       {
@@ -1555,7 +1526,7 @@ void assignTexture4(void)
       }
     }
 
-   if(iFilterType) 
+   if(iFilterType)
     {
      float fxmin=256.0f,fxmax=0.0f,fymin=256.0f,fymax=0.0f;int i;
      for(i=0;i<4;i++)
@@ -1563,7 +1534,7 @@ void assignTexture4(void)
        if(vertex[i].sow<fxmin) fxmin=vertex[i].sow;
        if(vertex[i].tow<fymin) fymin=vertex[i].tow;
        if(vertex[i].sow>fxmax) fxmax=vertex[i].sow;
-       if(vertex[i].tow>fymax) fymax=vertex[i].tow; 
+       if(vertex[i].tow>fymax) fymax=vertex[i].tow;
       }
 
      for(i=0;i<4;i++)
@@ -1591,7 +1562,7 @@ void assignTexture4(void)
 
 ////////////////////////////////////////////////////////////////////////
 // SetDisplaySettings: "simply" calcs the new drawing area and updates
-//                     the ogl clipping (scissor) 
+//                     the ogl clipping (scissor)
 
 BOOL bSetClip=FALSE;
 
@@ -1624,11 +1595,11 @@ void SetOGLDisplaySettings(BOOL DisplaySet)
     {
      rC=rX;
      glScissor(rC.left,rC.top,rC.right,rC.bottom);
-     bSetClip=FALSE; 
+     bSetClip=FALSE;
     }
    return;
   }
- //----------------------------------------------------// 
+ //----------------------------------------------------//
 
  PSXDisplay.GDrawOffset.y = PreviousPSXDisplay.DisplayPosition.y;
  PSXDisplay.GDrawOffset.x = PreviousPSXDisplay.DisplayPosition.x;
@@ -1723,4 +1694,3 @@ void SetOGLDisplaySettings(BOOL DisplaySet)
 ////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////
-

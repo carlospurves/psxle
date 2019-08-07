@@ -37,7 +37,7 @@ extern int errno;
 // SETUP SOUND
 ////////////////////////////////////////////////////////////////////////
 
-void SetupSound(void)
+void SetupSound()
 {
  int pspeed=44100;
  int pstereo;
@@ -72,7 +72,7 @@ void SetupSound(void)
  if(ioctl(oss_audio_fd,SNDCTL_DSP_SETFRAGMENT,&myfrag)==-1)
   {
    printf("Sound set fragment failed!\n");
-   return;        
+   return;
   }
 
  format = AFMT_S16_NE;

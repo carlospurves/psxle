@@ -17,9 +17,19 @@
  */
 
 #include "pad.h"
+#include<stdio.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+#define DEBUG 0
+
+int joy_source;
+char* controllerPipe = "/home/cp614/tmp/psxcontroller";
 
 void JoyInitHaptic()
 {
+
 #if SDL_VERSION_ATLEAST(2,0,0)
 	uint8_t i;
     //unsigned int haptic_query = 0;
@@ -43,14 +53,14 @@ void JoyInitHaptic()
 
 			if (SDL_HapticRumbleSupported(g.PadState[i].haptic) == SDL_FALSE)
 			{
-				printf("\nRumble not supported\n");
+				if (DEBUG) printf("\nRumble not supported\n");
 				g.PadState[i].haptic = NULL;
 				continue;
 			}
 
 			if (SDL_HapticRumbleInit(g.PadState[i].haptic) != 0)
 			{
-				printf("\nFailed to initialize rumble: %s\n", SDL_GetError());
+				if (DEBUG) printf("\nFailed to initialize rumble: %s\n", SDL_GetError());
 				g.PadState[i].haptic = NULL;
 				continue;
 			}
@@ -61,20 +71,21 @@ void JoyInitHaptic()
 
 int JoyHapticRumble(int pad, uint32_t low, uint32_t high)
 {
+	if (DEBUG) printf("Rumble...\n");
 #if SDL_VERSION_ATLEAST(2,0,0)
   float mag;
 
-  if (g.PadState[pad].haptic && g.cfg.PadDef[pad].PhysicalVibration) {
+  if (g.PadState[pad].haptic) {
 
     /* Stop the effect if it was playing. */
     SDL_HapticRumbleStop(g.PadState[pad].haptic);
 
     mag = ((high * 2 + low) / 6) / 127.5;
-    //printf("low: %d high: %d mag: %f\n", low, high, mag);
+    //if (DEBUG) printf("low: %d high: %d mag: %f\n", low, high, mag);
 
     if(SDL_HapticRumblePlay(g.PadState[pad].haptic, mag, 500) != 0)
     {
-      printf("\nFailed to play rumble on pad %d with error: %s\n", pad, SDL_GetError());
+      if (DEBUG) printf("\nFailed to play rumble: %s\n", SDL_GetError());
       return 1;
     }
   }
@@ -82,57 +93,42 @@ int JoyHapticRumble(int pad, uint32_t low, uint32_t high)
   return 0;
 }
 
-void InitSDLJoy() {
+
+void printMap(){
+	if (DEBUG) printf("Start:%i\n Up:%i Right:%i Down:%i Left:%i\n Tri:%i Circ:%i Cross:%i Square:%i\n", DKEY_START,DKEY_UP,DKEY_RIGHT,DKEY_DOWN
+	,DKEY_LEFT,DKEY_TRIANGLE,DKEY_CIRCLE,DKEY_CROSS,DKEY_SQUARE);
+}
+
+void InitSDLJoy(char* pname) {
+
+	if (strcmp(pname, "none") != 0){
+		if (DEBUG) printf("Starting FakeJoy ...\n");
+
+		char pipename[64];
+		sprintf(pipename, "%s-joy", pname);
+
+		if (DEBUG) printf("Using pipe: %s ...\n", pipename);
+
+
+		joy_source = open(pipename, O_RDONLY);
+	}else{
+		joy_source = NULL;
+	}
+
+	if (DEBUG) printf("Open ...\n");
+
 	uint8_t				i;
 	g.PadState[0].JoyKeyStatus = 0xFFFF;
 	g.PadState[1].JoyKeyStatus = 0xFFFF;
+	g.PadState[0].PadModeKey = 0;
+	g.PadState[1].PadModeKey = 0;
 
-	for (i = 0; i < 2; i++) {
-		if (g.cfg.PadDef[i].DevNum >= 0) {
-#if SDL_VERSION_ATLEAST(2,0,0)
-			if (g.cfg.PadDef[i].UseSDL2) {
-				g.PadState[i].GCDev = SDL_GameControllerOpen(g.cfg.PadDef[i].DevNum);
-			}
-			
-			if (!g.PadState[i].GCDev) {
-				g.PadState[i].JoyDev = SDL_JoystickOpen(g.cfg.PadDef[i].DevNum);
-			}
-#else
-			g.PadState[i].JoyDev = SDL_JoystickOpen(g.cfg.PadDef[i].DevNum);
-#endif
-			// Saves an extra call to SDL joystick open
-			if (g.cfg.E.DevNum == g.cfg.PadDef[i].DevNum) {
-				g.cfg.E.EmuKeyDev = g.PadState[i].JoyDev;
-			}
-		} else {
-			g.PadState[i].JoyDev = NULL;
-		}
-#if !SDL_VERSION_ATLEAST(2,0,0) && defined(__linux__)
-		g.PadState[i].VibrateDev = -1;
-		g.PadState[i].VibrateEffect = -1;
-#endif
-	}
-
-#if SDL_VERSION_ATLEAST(2,0,0)
-	if (has_haptic)
-	{
-		JoyInitHaptic();
-	}
-#endif
-
-	if (g.cfg.E.EmuKeyDev == 0 && g.cfg.E.DevNum >= 0) {
-		g.cfg.E.EmuKeyDev = SDL_JoystickOpen(g.cfg.E.DevNum);
-	}
-
-	SDL_JoystickEventState(SDL_IGNORE);
-#if SDL_VERSION_ATLEAST(2,0,0)
-	SDL_GameControllerEventState(SDL_IGNORE);
-#endif
-
-	InitAnalog();
 }
 
 void DestroySDLJoy() {
+	if (joy_source != NULL) close(joy_source);
+	unlink(controllerPipe);
+
 	uint8_t				i;
 
 	if (SDL_WasInit(SDL_INIT_JOYSTICK)) {
@@ -162,8 +158,8 @@ void DestroySDLJoy() {
 #if SDL_VERSION_ATLEAST(2,0,0)
 		g.PadState[i].GCDev = NULL;
 #endif
-	}
-	g.cfg.E.EmuKeyDev = NULL;
+	 }
+	 g.cfg.E.EmuKeyDev = NULL;
 }
 
 static void bdown(int pad, int bit)
@@ -186,7 +182,53 @@ static void bup(int pad, int bit)
 		g.PadState[pad].PadModeKey = 0;
 }
 
+
+char ParseDelay(char a){
+	return a&((char)127);
+}
+char ParseIntent(char a){
+	return (a>>7);
+}
+char ParseControllerID(char a){
+	return (a>>6)&((char)1);
+}
+char ParseConfig(char a){
+	return (a>>5)&((char)1);
+}
+char ParseKey(char a){
+	return a&((char)31);
+}
+
+
 void CheckJoy() {
+	char keybuf[1];
+
+	if (joy_source != NULL){
+		while(1){
+			int b = read(joy_source, keybuf, 1);
+			char v = keybuf[0];
+			if (b==0) break;
+			if (ParseIntent(v) == 0){
+				int i = ParseControllerID(v);
+				int j = ParseKey(v);
+
+				if (ParseConfig(v) == (char) 1){
+					if (DEBUG) printf("[FAKEJOY] Pressing %i\n", j);
+					bdown(i, j);
+				}else{
+					if (DEBUG) printf("[FAKEJOY] Releasing %i\n", j);
+					bup(i, j);
+				}
+			}else{
+				if (DEBUG) printf("[FAKEJOY] Delay for %i ms\n", ((int) ParseDelay(v))*10);
+				int delay = ((int) ParseDelay(v))*10000;
+				usleep(delay);
+			}
+		}
+	}
+
+
+	/*
 	uint8_t				i, j, n;
 #if SDL_VERSION_ATLEAST(2,0,0)
 	SDL_GameControllerUpdate();
@@ -240,7 +282,7 @@ void CheckJoy() {
 			}
 		}
 	}
-		
+
 #if SDL_VERSION_ATLEAST(2,0,0)
 		if (g.PadState[i].GCDev != NULL) {
 			g.PadState[i].JoyKeyStatus = ~0;
@@ -269,7 +311,7 @@ void CheckJoy() {
 							bup(i, j);
 						}
 						break;
-						
+
 					case DKEY_L2:
 						axis2 = SDL_GameControllerGetAxis(g.PadState[i].GCDev, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
 						if (axis2 > 0) {
@@ -277,9 +319,9 @@ void CheckJoy() {
 						} else {
 							bup(i, j);
 						}
-						
+
 						break;
-						
+
 					case DKEY_R2:
 						axis2 = SDL_GameControllerGetAxis(g.PadState[i].GCDev, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
 						if (axis2 > 0) {
@@ -287,9 +329,9 @@ void CheckJoy() {
 						} else {
 							bup(i, j);
 						}
-						
+
 						break;
-						
+
 					default:
 						break;
 				}
@@ -304,12 +346,12 @@ void CheckJoy() {
 			case BUTTON:
 				if (SDL_JoystickGetButton(g.cfg.E.EmuKeyDev, g.cfg.E.EmuDef[i].Mapping.J.Button)) {
 					if (g.cfg.E.EmuDef[i].Mapping.ReleaseEventPending == 0) {
-						//printf("%x %x %x %x\n", g.cfg.E.EmuKeyDev, i, g.cfg.E.EmuDef[i].Mapping.J.Button, g.cfg.E.EmuDef[i].EmuKeyEvent);
+						//if (DEBUG) printf("%x %x %x %x\n", g.cfg.E.EmuKeyDev, i, g.cfg.E.EmuDef[i].Mapping.J.Button, g.cfg.E.EmuDef[i].EmuKeyEvent);
 						g.KeyLeftOver = g.cfg.E.EmuDef[i].EmuKeyEvent;
 						g.cfg.E.EmuDef[i].Mapping.ReleaseEventPending = 1;
 					}
 				} else if (g.cfg.E.EmuDef[i].Mapping.ReleaseEventPending) {
-					//printf("%x %x %x %x\n", g.cfg.E.EmuKeyDev, i, g.cfg.E.EmuDef[i].Mapping.J.Button, g.cfg.E.EmuDef[i].EmuKeyEvent);
+					//if (DEBUG) printf("%x %x %x %x\n", g.cfg.E.EmuKeyDev, i, g.cfg.E.EmuDef[i].Mapping.J.Button, g.cfg.E.EmuDef[i].EmuKeyEvent);
 					g.KeyLeftOver = ( g.cfg.E.EmuDef[i].EmuKeyEvent | 0x40000000l );
 					g.cfg.E.EmuDef[i].Mapping.ReleaseEventPending = 0;
 				}
@@ -318,12 +360,12 @@ void CheckJoy() {
 				n = (g.cfg.E.EmuDef[i].Mapping.J.Hat >> 8);
 				if (SDL_JoystickGetHat(g.cfg.E.EmuKeyDev, n) & (g.cfg.E.EmuDef[i].Mapping.J.Hat & 0xFF)) {
 					if (g.cfg.E.EmuDef[i].Mapping.ReleaseEventPending == 0) {
-						//printf("%x %x %x %x\n", g.cfg.E.EmuKeyDev, i, g.cfg.E.EmuDef[i].Mapping.J.Button, g.cfg.E.EmuDef[i].EmuKeyEvent);
+						//if (DEBUG) printf("%x %x %x %x\n", g.cfg.E.EmuKeyDev, i, g.cfg.E.EmuDef[i].Mapping.J.Button, g.cfg.E.EmuDef[i].EmuKeyEvent);
 						g.KeyLeftOver = g.cfg.E.EmuDef[i].EmuKeyEvent;
 						g.cfg.E.EmuDef[i].Mapping.ReleaseEventPending = 1;
 					}
 				} else if (g.cfg.E.EmuDef[i].Mapping.ReleaseEventPending) {
-					//printf("%x %x %x %x\n", g.cfg.E.EmuKeyDev, i, g.cfg.E.EmuDef[i].Mapping.J.Button, g.cfg.E.EmuDef[i].EmuKeyEvent);
+					//if (DEBUG) printf("%x %x %x %x\n", g.cfg.E.EmuKeyDev, i, g.cfg.E.EmuDef[i].Mapping.J.Button, g.cfg.E.EmuDef[i].EmuKeyEvent);
 					g.KeyLeftOver = ( g.cfg.E.EmuDef[i].EmuKeyEvent | 0x40000000l );
 					g.cfg.E.EmuDef[i].Mapping.ReleaseEventPending = 0;
 				}
@@ -334,24 +376,24 @@ void CheckJoy() {
 				if (g.cfg.E.EmuDef[i].Mapping.J.Axis > 0) {
 					if (SDL_JoystickGetAxis(g.cfg.E.EmuKeyDev, n) > 16383) {
 						if (g.cfg.E.EmuDef[i].Mapping.ReleaseEventPending == 0) {
-							//printf("push1 %x %x %x %x\n", g.cfg.E.EmuKeyDev, i, g.cfg.E.EmuDef[i].Mapping.J.Axis, g.cfg.E.EmuDef[i].EmuKeyEvent);
+							//if (DEBUG) printf("push1 %x %x %x %x\n", g.cfg.E.EmuKeyDev, i, g.cfg.E.EmuDef[i].Mapping.J.Axis, g.cfg.E.EmuDef[i].EmuKeyEvent);
 							g.KeyLeftOver = g.cfg.E.EmuDef[i].EmuKeyEvent;
 							g.cfg.E.EmuDef[i].Mapping.ReleaseEventPending = 1;
 						}
 					} else if (g.cfg.E.EmuDef[i].Mapping.ReleaseEventPending) {
-						//printf("rel1 %x %x %x %x\n", g.cfg.E.EmuKeyDev, i, g.cfg.E.EmuDef[i].Mapping.J.Button, g.cfg.E.EmuDef[i].EmuKeyEvent);
+						//if (DEBUG) printf("rel1 %x %x %x %x\n", g.cfg.E.EmuKeyDev, i, g.cfg.E.EmuDef[i].Mapping.J.Button, g.cfg.E.EmuDef[i].EmuKeyEvent);
 						g.KeyLeftOver = ( g.cfg.E.EmuDef[i].EmuKeyEvent | 0x40000000l );
 						g.cfg.E.EmuDef[i].Mapping.ReleaseEventPending = 0;
 					}
 				} else if (g.cfg.E.EmuDef[i].Mapping.J.Axis < 0) {
 					if (SDL_JoystickGetAxis(g.cfg.E.EmuKeyDev, n) < -16383) {
 						if (g.cfg.E.EmuDef[i].Mapping.ReleaseEventPending == 0) {
-							//printf("push2 %x %x %x %x\n", g.cfg.E.EmuKeyDev, i, g.cfg.E.EmuDef[i].Mapping.J.Axis, g.cfg.E.EmuDef[i].EmuKeyEvent);
+							//if (DEBUG) printf("push2 %x %x %x %x\n", g.cfg.E.EmuKeyDev, i, g.cfg.E.EmuDef[i].Mapping.J.Axis, g.cfg.E.EmuDef[i].EmuKeyEvent);
 							g.KeyLeftOver = g.cfg.E.EmuDef[i].EmuKeyEvent;
 							g.cfg.E.EmuDef[i].Mapping.ReleaseEventPending = 1;
 						}
 					} else if (g.cfg.E.EmuDef[i].Mapping.ReleaseEventPending) {
-						//printf("rel2 %x %x %x %x\n", g.cfg.E.EmuKeyDev, i, g.cfg.E.EmuDef[i].Mapping.J.Button, g.cfg.E.EmuDef[i].EmuKeyEvent);
+						//if (DEBUG) printf("rel2 %x %x %x %x\n", g.cfg.E.EmuKeyDev, i, g.cfg.E.EmuDef[i].Mapping.J.Button, g.cfg.E.EmuDef[i].EmuKeyEvent);
 						g.KeyLeftOver = ( g.cfg.E.EmuDef[i].EmuKeyEvent | 0x40000000l );
 						g.cfg.E.EmuDef[i].Mapping.ReleaseEventPending = 0;
 					}
@@ -377,4 +419,5 @@ void CheckJoy() {
 				bdown(i, DKEY_DOWN);
 		}
 	}
+	*/
 }

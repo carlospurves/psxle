@@ -3,7 +3,7 @@
                              -------------------
     begin                : Sun Mar 08 2009
     copyright            : (C) 1999-2009 by Pete Bernert
-    web                  : www.pbernert.com   
+    web                  : www.pbernert.com
  ***************************************************************************/
 
 /***************************************************************************
@@ -35,12 +35,12 @@ BOOL bSetupPixelFormat(HDC hDC);
 
 int  GLinitialize();
 void GLcleanup();
-BOOL offset2(unsigned int* addr);
-BOOL offset3(unsigned int* addr);
-BOOL offset4(unsigned int* addr);
-BOOL offsetline(unsigned int* addr);
-void offsetST(unsigned int* addr);
-void offsetBlk(unsigned int* addr);
+BOOL offset2(void);
+BOOL offset3(void);
+BOOL offset4(void);
+BOOL offsetline(void);
+void offsetST(void);
+void offsetBlk(void);
 void offsetScreenUpload(int Position);
 void assignTexture3(void);
 void assignTexture4(void);
@@ -51,6 +51,8 @@ void ReadConfig(void);
 void WriteConfig(void);
 void SetExtGLFuncs(void);
 void CreateScanLines(void);
+
+int usingXWindow;
 
 ///////////////////////////////////////////////////////////////////////
 

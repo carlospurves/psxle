@@ -1018,7 +1018,6 @@ static void *MAINThread(void *arg)
 				tmp = 32767;
 			sr = (int)tmp;
 
-
 			*pS++=sl/voldiv;
 			*pS++=sr/voldiv;
 		} else {
@@ -1026,12 +1025,14 @@ static void *MAINThread(void *arg)
 
 			d=SSumL[ns]/voldiv;SSumL[ns]=0;
 			if(d<-32767) d=-32767;if(d>32767) d=32767;
+
 			*pS++=d;
 
 			SSumR[ns]+=MixREVERBRight();
 
 			d=SSumR[ns]/voldiv;SSumR[ns]=0;
 			if(d<-32767) d=-32767;if(d>32767) d=32767;
+
 			*pS++=d;
 		}
    }
@@ -1353,9 +1354,10 @@ long CALLBACK SPUinit(void)
 #ifdef _WINDOWS
 long CALLBACK SPUopen(HWND hW)
 #else
-long SPUopen(void)
+long SPUopen(int* sw, char* location, void (*notifPtr)(int))
 #endif
 {
+
  if (bSPUIsOpen) return 0;                             // security for some stupid main emus
 
 #ifdef _WINDOWS
@@ -1364,7 +1366,7 @@ long SPUopen(void)
  hWMain = hW;                                          // store hwnd
 #endif
 
- SetupSound();                                         // setup sound (before init!)
+ SetupSound(sw, location, notifPtr);                                         // setup sound (before init!)
  SetupTimer();                                         // timer for feeding data
 
  bSPUIsOpen = 1;

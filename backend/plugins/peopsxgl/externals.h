@@ -183,7 +183,6 @@ typedef struct OGLVertexTag
  GLfloat x;
  GLfloat y;
  GLfloat z;
- GLfloat w;
 
  GLfloat sow;
  GLfloat tow;
@@ -193,9 +192,6 @@ typedef struct OGLVertexTag
    unsigned char col[4];
    unsigned int lcol;
   } c;
-
- unsigned int PGXP_flag;
- unsigned int Vert_ID;
 } OGLVertex;
 
 typedef union EXShortTag
@@ -353,7 +349,6 @@ extern BOOL           bUseFastMdec;
 extern BOOL           bUse15bitMdec;
 extern int            iFrameTexType;
 extern int            iFrameReadType;
-extern int			  iLineHackMode;
 extern int            iClampType;
 extern int            iSortTexCnt;
 extern BOOL           bFakeFrontBuffer; 

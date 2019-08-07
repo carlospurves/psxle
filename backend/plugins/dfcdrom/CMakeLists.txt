@@ -1,4 +1,4 @@
-message(STATUS "* Configuring DFCdrom")
+message("Configuring dfcdrom")
 
 include(GlibCompileResourcesSupport)
 

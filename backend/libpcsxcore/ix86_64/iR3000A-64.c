@@ -27,10 +27,6 @@
 #include "../r3000a.h"
 #include "../psxhle.h"
 
-#include "../pgxp_cpu.h"
-#include "../pgxp_gte.h"
-#include "../pgxp_debug.h"
-
 #include <sys/mman.h>
 
 #ifndef MAP_ANONYMOUS
@@ -84,60 +80,6 @@ static void (*recREG[32])();
 static void (*recCP0[32])();
 static void (*recCP2[64])();
 static void (*recCP2BSC[32])();
-
-
-/// PGXP function tables
-static void(*pgxpRecBSC[64])();
-static void(*pgxpRecSPC[64])();
-static void(*pgxpRecCP0[32])();
-static void(*pgxpRecCP2BSC[32])();
-
-static void(*pgxpRecBSCMem[64])();
-///
-
-static void(**pRecBSC)() = recBSC;
-static void(**pRecSPC)() = recSPC;
-static void(**pRecREG)() = recREG;
-static void(**pRecCP0)() = recCP0;
-static void(**pRecCP2)() = recCP2;
-static void(**pRecCP2BSC)() = recCP2BSC;
-
-static void recReset();
-static void recSetPGXPMode(u32 pgxpMode)
-{
-	switch (pgxpMode)
-	{
-	case 0: //PGXP_MODE_DISABLED:
-		pRecBSC = recBSC;
-		pRecSPC = recSPC;
-		pRecREG = recREG;
-		pRecCP0 = recCP0;
-		pRecCP2 = recCP2;
-		pRecCP2BSC = recCP2BSC;
-		break;
-	case 1: //PGXP_MODE_MEM:
-		pRecBSC = pgxpRecBSCMem;
-		pRecSPC = recSPC;
-		pRecREG = recREG;
-		pRecCP0 = pgxpRecCP0;
-		pRecCP2 = recCP2;
-		pRecCP2BSC = pgxpRecCP2BSC;
-		break;
-	case 2: //PGXP_MODE_FULL:
-		pRecBSC = pgxpRecBSC;
-		pRecSPC = pgxpRecSPC;
-		pRecREG = recREG;
-		pRecCP0 = pgxpRecCP0;
-		pRecCP2 = recCP2;
-		pRecCP2BSC = pgxpRecCP2BSC;
-		break;
-	}
-
-	// set interpreter mode too
-	psxInt.SetPGXPMode(pgxpMode);
-	// reset to ensure new func tables are used
-	recReset();
-}
 
 #define STACKSIZE		0x18
 static void StackRes()
@@ -274,7 +216,7 @@ static void SetBranch() {
 			break;
 
 		default:
-			pRecBSC[psxRegs.code>>26]();
+			recBSC[psxRegs.code>>26]();
 			break;
 	}
 
@@ -315,7 +257,7 @@ static void iJump(u32 branchPC) {
 		return;
 	}
 
-	pRecBSC[psxRegs.code>>26]();
+	recBSC[psxRegs.code>>26]();
 
 	iFlushRegs();
 	iStoreCycle();
@@ -382,7 +324,7 @@ static void iBranch(u32 branchPC, int savectx) {
 	}
 
 	pc+= 4;
-	pRecBSC[psxRegs.code>>26]();
+	recBSC[psxRegs.code>>26]();
 
 	iFlushRegs();
 	iStoreCycle();
@@ -574,6 +516,7 @@ static void recError() {
 }
 
 /*__inline*/ static void execute() {
+
 	void (*recFunc)();
 	uptr *p;
 
@@ -624,16 +567,16 @@ static void recNULL() {
 //REC_SYS(SPECIAL);
 #if 1
 static void recSPECIAL() {
-	pRecSPC[_Funct_]();
+	recSPC[_Funct_]();
 }
 #endif
 
 static void recREGIMM() {
-	pRecREG[_Rt_]();
+	recREG[_Rt_]();
 }
 
 static void recCOP0() {
-	pRecCP0[_Rs_]();
+	recCP0[_Rs_]();
 }
 
 //REC_SYS(COP2);
@@ -643,14 +586,14 @@ static void recCOP2() {
 	AND32ItoR(EAX, 0x40000000);
 	j32Ptr[31] = JZ32(0);
 
-	pRecCP2[_Funct_]();
+	recCP2[_Funct_]();
 
 	x86SetJ32(j32Ptr[31]);
 }
 #endif
 
 static void recBASIC() {
-	pRecCP2BSC[_Rs_]();
+	recCP2BSC[_Rs_]();
 }
 
 //end of Tables opcodes...
@@ -1669,7 +1612,7 @@ static void recLW() {
 					iRegs[_Rt_].state = ST_UNK;
 					MOV32MtoR(EAX, (uptr)&psxH[addr & 0xffff]);
 					MOV32RtoM((uptr)&psxRegs.GPR.r[_Rt_], EAX);
-					
+
 					return;
 
 				case 0x1f801810:
@@ -2995,8 +2938,6 @@ static void recHLE() {
 
 //
 
-#include "iPGXP-64.h"
-
 static void (*recBSC[64])() = {
 	recSPECIAL, recREGIMM, recJ   , recJAL  , recBEQ , recBNE , recBLEZ, recBGTZ,
 	recADDI   , recADDIU , recSLTI, recSLTIU, recANDI, recORI , recXORI, recLUI ,
@@ -3051,54 +2992,6 @@ static void (*recCP2BSC[32])() = {
 	recNULL, recNULL, recNULL, recNULL, recNULL, recNULL, recNULL, recNULL
 };
 
-// Trace all functions using PGXP
-static void(*pgxpRecBSC[64])() = {
-	recSPECIAL, recREGIMM, recJ   , recJAL  , recBEQ , recBNE , recBLEZ, recBGTZ,
-	pgxpRecADDI   , pgxpRecADDIU , pgxpRecSLTI, pgxpRecSLTIU, pgxpRecANDI, pgxpRecORI , pgxpRecXORI, pgxpRecLUI ,
-	recCOP0   , recNULL  , recCOP2, recNULL , recNULL, recNULL, recNULL, recNULL,
-	recNULL   , recNULL  , recNULL, recNULL , recNULL, recNULL, recNULL, recNULL,
-	pgxpRecLB     , pgxpRecLH    , pgxpRecLWL , pgxpRecLW   , pgxpRecLBU , pgxpRecLHU , pgxpRecLWR , pgxpRecNULL,
-	pgxpRecSB     , pgxpRecSH    , pgxpRecSWL , pgxpRecSW   , pgxpRecNULL, pgxpRecNULL, pgxpRecSWR , pgxpRecNULL,
-	recNULL   , recNULL  , pgxpRecLWC2, recNULL , recNULL, recNULL, recNULL, recNULL,
-	recNULL   , recNULL  , pgxpRecSWC2, recHLE  , recNULL, recNULL, recNULL, recNULL
-};
-
-static void(*pgxpRecSPC[64])() = {
-	pgxpRecSLL , pgxpRecNULL, pgxpRecSRL , pgxpRecSRA , pgxpRecSLLV   , pgxpRecNULL , pgxpRecSRLV, pgxpRecSRAV,
-	recJR  , recJALR, recNULL, recNULL, recSYSCALL, recBREAK, recNULL, recNULL,
-	pgxpRecMFHI, pgxpRecMTHI, pgxpRecMFLO, pgxpRecMTLO, pgxpRecNULL   , pgxpRecNULL , pgxpRecNULL, pgxpRecNULL,
-	pgxpRecMULT, pgxpRecMULTU, pgxpRecDIV, pgxpRecDIVU, pgxpRecNULL   , pgxpRecNULL , pgxpRecNULL, pgxpRecNULL,
-	pgxpRecADD , pgxpRecADDU, pgxpRecSUB , pgxpRecSUBU, pgxpRecAND    , pgxpRecOR   , pgxpRecXOR , pgxpRecNOR ,
-	pgxpRecNULL, pgxpRecNULL, pgxpRecSLT , pgxpRecSLTU, pgxpRecNULL   , pgxpRecNULL , pgxpRecNULL, pgxpRecNULL,
-	pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL   , pgxpRecNULL , pgxpRecNULL, pgxpRecNULL,
-	pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL   , pgxpRecNULL , pgxpRecNULL, pgxpRecNULL
-};
-
-static void(*pgxpRecCP0[32])() = {
-	pgxpRecMFC0, pgxpRecNULL, pgxpRecCFC0, pgxpRecNULL, pgxpRecMTC0, pgxpRecNULL, pgxpRecCTC0, pgxpRecNULL,
-	pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL,
-	pgxpRecRFE , pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL,
-	pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL
-};
-
-static void(*pgxpRecCP2BSC[32])() = {
-	pgxpRecMFC2, pgxpRecNULL, pgxpRecCFC2, pgxpRecNULL, pgxpRecMTC2, pgxpRecNULL, pgxpRecCTC2, pgxpRecNULL,
-	pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL,
-	pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL,
-	pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL, pgxpRecNULL
-};
-
-// Trace memory functions only
-static void(*pgxpRecBSCMem[64])() = {
-	recSPECIAL, recREGIMM, recJ   , recJAL  , recBEQ , recBNE , recBLEZ, recBGTZ,
-	recADDI   , recADDIU , recSLTI, recSLTIU, recANDI, recORI , recXORI, recLUI ,
-	recCOP0   , recNULL  , recCOP2, recNULL , recNULL, recNULL, recNULL, recNULL,
-	recNULL   , recNULL  , recNULL, recNULL , recNULL, recNULL, recNULL, recNULL,
-	pgxpRecLB     , pgxpRecLH    , pgxpRecLWL , pgxpRecLW   , pgxpRecLBU , pgxpRecLHU , pgxpRecLWR , pgxpRecNULL,
-	pgxpRecSB     , pgxpRecSH    , pgxpRecSWL , pgxpRecSW   , pgxpRecNULL, pgxpRecNULL, pgxpRecSWR , pgxpRecNULL,
-	recNULL   , recNULL  , pgxpRecLWC2, recNULL , recNULL, recNULL, recNULL, recNULL,
-	recNULL   , recNULL  , pgxpRecSWC2, recHLE  , recNULL, recNULL, recNULL, recNULL
-};
 
 static void recRecompile() {
 	char *p;
@@ -3169,7 +3062,7 @@ static void recRecompile() {
 		iDump(iRegs);
 #endif
 		pc+=4; count++;
-		pRecBSC[psxRegs.code>>26]();
+		recBSC[psxRegs.code>>26]();
 #ifdef PSXCPU_LOG
 		dump = FALSE;
 #endif
@@ -3195,7 +3088,6 @@ R3000Acpu psxRec = {
 	recExecute,
 	recExecuteBlock,
 	recClear,
-	recShutdown,
-	recSetPGXPMode
+	recShutdown
 };
 #endif

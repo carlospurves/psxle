@@ -334,219 +334,224 @@ static void DoTextSnapShot(int iNum)
  fclose(txtfile);
 }
 
-void CALLBACK GPUmakeSnapshot(void)
-{
- FILE *bmpfile;
- char filename[256];
- unsigned char header[0x36];
- long size, height;
- unsigned char line[1024 * 3];
- short i, j;
- unsigned char empty[2] = {0,0};
- unsigned short color;
- unsigned long snapshotnr = 0;
- unsigned char *pD;
-
- height = PreviousPSXDisplay.DisplayMode.y;
-
- size = height * PreviousPSXDisplay.Range.x1 * 3 + 0x38;
-
- // fill in proper values for BMP
-
- // hardcoded BMP header
- memset(header, 0, 0x36);
- header[0] = 'B';
- header[1] = 'M';
- header[2] = size & 0xff;
- header[3] = (size >> 8) & 0xff;
- header[4] = (size >> 16) & 0xff;
- header[5] = (size >> 24) & 0xff;
- header[0x0a] = 0x36;
- header[0x0e] = 0x28;
- header[0x12] = PreviousPSXDisplay.Range.x1 % 256;
- header[0x13] = PreviousPSXDisplay.Range.x1 / 256;
- header[0x16] = height % 256;
- header[0x17] = height / 256;
- header[0x1a] = 0x01;
- header[0x1c] = 0x18;
- header[0x26] = 0x12;
- header[0x27] = 0x0B;
- header[0x2A] = 0x12;
- header[0x2B] = 0x0B;
-
- // increment snapshot value & try to get filename
- do
-  {
-   snapshotnr++;
-#ifdef _WINDOWS
-   sprintf(filename,"snap\\pcsxr%04ld.bmp",snapshotnr);
-#else
-   sprintf(filename, "%s/pcsxr%04ld.bmp", getenv("HOME"), snapshotnr);
-#endif
-
-   bmpfile = fopen(filename,"rb");
-   if (bmpfile == NULL)
-    break;
-
-   fclose(bmpfile);
-  }
- while(TRUE);
-
- // try opening new snapshot file
- if ((bmpfile = fopen(filename,"wb")) == NULL)
-  return;
-
- fwrite(header, 0x36, 1, bmpfile);
- for (i = height + PSXDisplay.DisplayPosition.y - 1; i >= PSXDisplay.DisplayPosition.y; i--)
-  {
-   pD = (unsigned char *)&psxVuw[i * 1024 + PSXDisplay.DisplayPosition.x];
-   for (j = 0; j < PreviousPSXDisplay.Range.x1; j++)
-    {
-     if (PSXDisplay.RGB24)
-      {
-       uint32_t lu = *(uint32_t *)pD;
-       line[j * 3 + 2] = (unsigned char)RED(lu);
-       line[j * 3 + 1] = (unsigned char)GREEN(lu);
-       line[j * 3 + 0] = (unsigned char)BLUE(lu);
-       pD += 3;
-      }
-     else
-      {
-       color = GETLE16(pD);
-       line[j * 3 + 2] = (color << 3) & 0xf1;
-       line[j * 3 + 1] = (color >> 2) & 0xf1;
-       line[j * 3 + 0] = (color >> 7) & 0xf1;
-       pD += 2;
-      }
-    }
-   fwrite(line, PreviousPSXDisplay.Range.x1 * 3, 1, bmpfile);
-  }
- fwrite(empty, 0x2, 1, bmpfile);
- fclose(bmpfile);
-
- DoTextSnapShot(snapshotnr);
-}
-
-////////////////////////////////////////////////////////////////////////
-// INIT, will be called after lib load... well, just do some var init...
-////////////////////////////////////////////////////////////////////////
-
-long CALLBACK GPUinit()                                // GPU INIT
-{
- memset(ulStatusControl,0,256*sizeof(uint32_t));  // init save state scontrol field
-
- szDebugText[0] = 0;                                     // init debug text buffer
-
- psxVSecure = (unsigned char *)malloc((iGPUHeight*2)*1024 + (1024*1024)); // always alloc one extra MB for soft drawing funcs security
- if (!psxVSecure)
-  return -1;
-
- //!!! ATTENTION !!!
- psxVub=psxVSecure + 512 * 1024;                           // security offset into double sized psx vram!
-
- psxVsb=(signed char *)psxVub;                         // different ways of accessing PSX VRAM
- psxVsw=(signed short *)psxVub;
- psxVsl=(int32_t *)psxVub;
- psxVuw=(unsigned short *)psxVub;
- psxVul=(uint32_t *)psxVub;
-
- psxVuw_eom=psxVuw+1024*iGPUHeight;                    // pre-calc of end of vram
-
- memset(psxVSecure,0x00,(iGPUHeight*2)*1024 + (1024*1024));
- memset(lGPUInfoVals,0x00,16*sizeof(uint32_t));
-
- SetFPSHandler();
-
- PSXDisplay.RGB24        = FALSE;                      // init some stuff
- PSXDisplay.Interlaced   = FALSE;
- PSXDisplay.DrawOffset.x = 0;
- PSXDisplay.DrawOffset.y = 0;
- PSXDisplay.DisplayMode.x= 320;
- PSXDisplay.DisplayMode.y= 240;
- PreviousPSXDisplay.DisplayMode.x= 320;
- PreviousPSXDisplay.DisplayMode.y= 240;
- PSXDisplay.Disabled     = FALSE;
- PreviousPSXDisplay.Range.x0 =0;
- PreviousPSXDisplay.Range.y0 =0;
- PSXDisplay.Range.x0=0;
- PSXDisplay.Range.x1=0;
- PreviousPSXDisplay.DisplayModeNew.y=0;
- PSXDisplay.Double = 1;
- lGPUdataRet = 0x400;
-
- DataWriteMode = DR_NORMAL;
-
- // Reset transfer values, to prevent mis-transfer of data
- memset(&VRAMWrite, 0, sizeof(VRAMLoad_t));
- memset(&VRAMRead, 0, sizeof(VRAMLoad_t));
-
- // device initialised already !
- lGPUstatusRet = 0x14802000;
- GPUIsIdle;
- GPUIsReadyForCommands;
- bDoVSyncUpdate = TRUE;
- vBlank = 0;
- oddLines = FALSE;
-
- // Get a handle for kernel32.dll, and access the required export function
- LoadKernel32();
-
- return 0;
-}
-
-////////////////////////////////////////////////////////////////////////
-// Here starts all...
-////////////////////////////////////////////////////////////////////////
-
-#ifdef _WINDOWS
-long CALLBACK GPUopen(HWND hwndGPU)                    // GPU OPEN
-{
- hWGPU = hwndGPU;                                      // store hwnd
-
- SetKeyHandler();                                      // sub-class window
-
- if(bChangeWinMode) ReadWinSizeConfig();               // alt+enter toggle?
- else                                                  // or first time startup?
-  {
-   ReadConfig();                                       // read registry
-   InitFPS();
-  }
-
- bIsFirstFrame  = TRUE;                                // we have to init later
- bDoVSyncUpdate = TRUE;
-
- ulInitDisplay();                                      // setup direct draw
-
- if(iStopSaver)
-  D_SetThreadExecutionState(ES_SYSTEM_REQUIRED|ES_DISPLAY_REQUIRED|ES_CONTINUOUS);
+	void CALLBACK GPUmakeSnapshot(int smid){
+		/*
+		FILE *bmpfile;
+		char filename[256];
+		unsigned char header[0x36];
+		long size, height;
+		unsigned char line[1024 * 3];
+		short i, j;
+		unsigned char empty[2] = {0,0};
+		unsigned short color;
+		int snapshotnr = smid;
+		unsigned char *pD;
 
 
- return 0;
-}
+		height = PreviousPSXDisplay.DisplayMode.y;
 
-#else
+		size = height * PreviousPSXDisplay.Range.x1 * 3 + 0x38;
 
-long GPUopen(unsigned long * disp,char * CapText,char * CfgFile)
-{
- unsigned long d;
+		// fill in proper values for BMP
 
- pCaptionText=CapText;
+		// hardcoded BMP header
+		memset(header, 0, 0x36);
+		header[0] = 'B';
+		header[1] = 'M';
+		header[2] = size & 0xff;
+		header[3] = (size >> 8) & 0xff;
+		header[4] = (size >> 16) & 0xff;
+		header[5] = (size >> 24) & 0xff;
+		header[0x0a] = 0x36;
+		header[0x0e] = 0x28;
+		header[0x12] = PreviousPSXDisplay.Range.x1 % 256;
+		header[0x13] = PreviousPSXDisplay.Range.x1 / 256;
+		header[0x16] = height % 256;
+		header[0x17] = height / 256;
+		header[0x1a] = 0x01;
+		header[0x1c] = 0x18;
+		header[0x26] = 0x12;
+		header[0x27] = 0x0B;
+		header[0x2A] = 0x12;
+		header[0x2B] = 0x0B;
+
+		// increment snapshot value & try to get filename
+		do
+		{
+		 snapshotnr++;
+		#ifdef _WINDOWS
+		 sprintf(filename,"snap\\pcsxr%i.bmp",snapshotnr);
+		#else
+		 sprintf(filename, "%s/pcsxr%i.bmp", getenv("HOME"), snapshotnr);
+		#endif
+
+		 bmpfile = fopen(filename,"rb");
+		 if (bmpfile == NULL)
+		  break;
+
+		 fclose(bmpfile);
+		}
+		while(TRUE);
+
+		// try opening new snapshot file
+		if ((bmpfile = fopen(filename,"wb")) == NULL)
+		return;
+
+		fwrite(header, 0x36, 1, bmpfile);
+		for (i = height + PSXDisplay.DisplayPosition.y - 1; i >= PSXDisplay.DisplayPosition.y; i--)
+		{
+		 pD = (unsigned char *)&psxVuw[i * 1024 + PSXDisplay.DisplayPosition.x];
+		 for (j = 0; j < PreviousPSXDisplay.Range.x1; j++)
+		  {
+		   if (PSXDisplay.RGB24)
+		    {
+		     uint32_t lu = *(uint32_t *)pD;
+		     line[j * 3 + 2] = (unsigned char)RED(lu);
+		     line[j * 3 + 1] = (unsigned char)GREEN(lu);
+		     line[j * 3 + 0] = (unsigned char)BLUE(lu);
+		     pD += 3;
+		    }
+		   else
+		    {
+		     color = GETLE16(pD);
+		     line[j * 3 + 2] = (color << 3) & 0xf1;
+		     line[j * 3 + 1] = (color >> 2) & 0xf1;
+		     line[j * 3 + 0] = (color >> 7) & 0xf1;
+		     pD += 2;
+		    }
+		  }
+		 fwrite(line, PreviousPSXDisplay.Range.x1 * 3, 1, bmpfile);
+		}
+		fwrite(empty, 0x2, 1, bmpfile);
+		fclose(bmpfile);
+
+		DoTextSnapShot(snapshotnr);
+
+		printf("Returning values...\n");
+
+		*/
+	}
+
+	////////////////////////////////////////////////////////////////////////
+	// INIT, will be called after lib load... well, just do some var init...
+	////////////////////////////////////////////////////////////////////////
+
+	long CALLBACK GPUinit()                                // GPU INIT
+	{
+	memset(ulStatusControl,0,256*sizeof(uint32_t));  // init save state scontrol field
+
+	szDebugText[0] = 0;                                     // init debug text buffer
+
+	psxVSecure = (unsigned char *)malloc((iGPUHeight*2)*1024 + (1024*1024)); // always alloc one extra MB for soft drawing funcs security
+	if (!psxVSecure)
+	return -1;
+
+	//!!! ATTENTION !!!
+	psxVub=psxVSecure + 512 * 1024;                           // security offset into double sized psx vram!
+
+	psxVsb=(signed char *)psxVub;                         // different ways of accessing PSX VRAM
+	psxVsw=(signed short *)psxVub;
+	psxVsl=(int32_t *)psxVub;
+	psxVuw=(unsigned short *)psxVub;
+	psxVul=(uint32_t *)psxVub;
+
+	psxVuw_eom=psxVuw+1024*iGPUHeight;                    // pre-calc of end of vram
+
+	memset(psxVSecure,0x00,(iGPUHeight*2)*1024 + (1024*1024));
+	memset(lGPUInfoVals,0x00,16*sizeof(uint32_t));
+
+	SetFPSHandler();
+
+	PSXDisplay.RGB24        = FALSE;                      // init some stuff
+	PSXDisplay.Interlaced   = FALSE;
+	PSXDisplay.DrawOffset.x = 0;
+	PSXDisplay.DrawOffset.y = 0;
+	PSXDisplay.DisplayMode.x= 320;
+	PSXDisplay.DisplayMode.y= 240;
+	PreviousPSXDisplay.DisplayMode.x= 320;
+	PreviousPSXDisplay.DisplayMode.y= 240;
+	PSXDisplay.Disabled     = FALSE;
+	PreviousPSXDisplay.Range.x0 =0;
+	PreviousPSXDisplay.Range.y0 =0;
+	PSXDisplay.Range.x0=0;
+	PSXDisplay.Range.x1=0;
+	PreviousPSXDisplay.DisplayModeNew.y=0;
+	PSXDisplay.Double = 1;
+	lGPUdataRet = 0x400;
+
+	DataWriteMode = DR_NORMAL;
+
+	// Reset transfer values, to prevent mis-transfer of data
+	memset(&VRAMWrite, 0, sizeof(VRAMLoad_t));
+	memset(&VRAMRead, 0, sizeof(VRAMLoad_t));
+
+	// device initialised already !
+	lGPUstatusRet = 0x14802000;
+	GPUIsIdle;
+	GPUIsReadyForCommands;
+	bDoVSyncUpdate = TRUE;
+	vBlank = 0;
+	oddLines = FALSE;
+
+	// Get a handle for kernel32.dll, and access the required export function
+	LoadKernel32();
+
+	return 0;
+	}
+
+	////////////////////////////////////////////////////////////////////////
+	// Here starts all...
+	////////////////////////////////////////////////////////////////////////
+
+	#ifdef _WINDOWS
+	long CALLBACK GPUopen(HWND hwndGPU)                    // GPU OPEN
+	{
+	hWGPU = hwndGPU;                                      // store hwnd
+
+	SetKeyHandler();                                      // sub-class window
+
+	if(bChangeWinMode) ReadWinSizeConfig();               // alt+enter toggle?
+	else                                                  // or first time startup?
+	{
+	 ReadConfig();                                       // read registry
+	 InitFPS();
+	}
+
+	bIsFirstFrame  = TRUE;                                // we have to init later
+	bDoVSyncUpdate = TRUE;
+
+	ulInitDisplay();                                      // setup direct draw
+
+	if(iStopSaver)
+	D_SetThreadExecutionState(ES_SYSTEM_REQUIRED|ES_DISPLAY_REQUIRED|ES_CONTINUOUS);
 
 
- ReadConfig();                                         // read registry
+	return 0;
+	}
 
- InitFPS();
+	#else
 
- bIsFirstFrame  = TRUE;                                // we have to init later
- bDoVSyncUpdate = TRUE;
+	long GPUopen(unsigned long * disp,char * CapText,char * CfgFile)
+	{
+	unsigned long d;
 
- d=ulInitDisplay();                                    // setup x
+	pCaptionText=CapText;
 
- if(disp)
+
+	ReadConfig();                                         // read registry
+
+	InitFPS();
+
+	bIsFirstFrame  = TRUE;                                // we have to init later
+	bDoVSyncUpdate = TRUE;
+
+	d=ulInitDisplay();                                    // setup x
+
+	if(disp)
 	*disp=d;                                     // wanna x pointer? ok
 
- if(d) return 0;
- return -1;
+	if(d) return 0;
+	return -1;
 }
 
 #endif
@@ -988,11 +993,11 @@ void CALLBACK GPUupdateLace(void)                      // VSYNC
 
 uint32_t CALLBACK GPUreadStatus(void)             // READ STATUS
 {
- if (vBlank || oddLines == FALSE) 
+ if (vBlank || oddLines == FALSE)
   { // vblank or even lines
    lGPUstatusRet &= ~(0x80000000);
-  } 
- else 
+  }
+ else
   { // Oddlines and not vblank
    lGPUstatusRet |= 0x80000000;
   }

@@ -246,6 +246,7 @@ static void UpdateKeyList() {
 
 		gtk_tree_view_set_model(GTK_TREE_VIEW(widget), GTK_TREE_MODEL(store));
 		g_object_unref(G_OBJECT(store));
+//		gtk_tree_view_set_rules_hint(GTK_TREE_VIEW(widget), TRUE);
 		gtk_widget_show(widget);
 	}
 }
@@ -326,7 +327,6 @@ static void OnDeviceChanged(GtkWidget *widget, gpointer user_data) {
 
 static void OnTypeChanged(GtkWidget *widget, gpointer user_data) {
 	uint n = GPOINTER_TO_UINT(user_data), current = gtk_combo_box_get_active(GTK_COMBO_BOX(widget));
-    char checkbtn[9];
 
 	int padTypeList[] = {
 		PSE_PAD_TYPE_STANDARD,
@@ -335,10 +335,6 @@ static void OnTypeChanged(GtkWidget *widget, gpointer user_data) {
 	};
 
 	g.cfg.PadDef[n].Type = padTypeList[current];
-
-    snprintf(checkbtn, sizeof(checkbtn), "checkpv%d", n+1);
-    gtk_widget_set_sensitive(GTK_WIDGET(
-        gtk_builder_get_object(xml, checkbtn)), (g.cfg.PadDef[n].Type == PSE_PAD_TYPE_ANALOGPAD));
 
 	UpdateKeyList();
 }
@@ -353,14 +349,6 @@ static void OnVisualVibration1Toggled(GtkWidget *widget, gpointer user_data) {
 
 static void OnVisualVibration2Toggled(GtkWidget *widget, gpointer user_data) {
 	g.cfg.PadDef[1].VisualVibration = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget));
-}
-
-static void OnPhysicalVibration1Toggled(GtkWidget *widget, gpointer user_data) {
-    g.cfg.PadDef[0].PhysicalVibration = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget));
-}
-
-static void OnPhysicalVibration2Toggled(GtkWidget *widget, gpointer user_data) {
-    g.cfg.PadDef[1].PhysicalVibration = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget));
 }
 
 static void OnHideCursorToggled(GtkWidget *widget, gpointer user_data) {
@@ -760,14 +748,12 @@ long PADconfigure() {
 	widget = GTK_WIDGET(gtk_builder_get_object(xml, "combotype1"));
 	gtk_combo_box_set_active(GTK_COMBO_BOX(widget),
 		padTypeList[g.cfg.PadDef[0].Type]);
-    OnTypeChanged(widget, GUINT_TO_POINTER(0u));
 	g_signal_connect_data(G_OBJECT(widget), "changed",
 		G_CALLBACK(OnTypeChanged), GUINT_TO_POINTER(0u), NULL, G_CONNECT_AFTER);
 
 	widget = GTK_WIDGET(gtk_builder_get_object(xml, "combotype2"));
 	gtk_combo_box_set_active(GTK_COMBO_BOX(widget),
 		padTypeList[g.cfg.PadDef[1].Type]);
-    OnTypeChanged(widget, GUINT_TO_POINTER(1u));
 	g_signal_connect_data(G_OBJECT(widget), "changed",
 		G_CALLBACK(OnTypeChanged), GUINT_TO_POINTER(1u), NULL, G_CONNECT_AFTER);
 
@@ -780,16 +766,6 @@ long PADconfigure() {
 	gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(widget), g.cfg.PadDef[1].VisualVibration);
 	g_signal_connect_data(G_OBJECT(widget), "toggled",
 		G_CALLBACK(OnVisualVibration2Toggled), NULL, NULL, G_CONNECT_AFTER);
-
-    widget = GTK_WIDGET(gtk_builder_get_object(xml, "checkpv1"));
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(widget), g.cfg.PadDef[0].PhysicalVibration);
-    g_signal_connect_data(G_OBJECT(widget), "toggled",
-                          G_CALLBACK(OnPhysicalVibration1Toggled), NULL, NULL, G_CONNECT_AFTER);
-
-    widget = GTK_WIDGET(gtk_builder_get_object(xml, "checkpv2"));
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(widget), g.cfg.PadDef[1].PhysicalVibration);
-    g_signal_connect_data(G_OBJECT(widget), "toggled",
-                          G_CALLBACK(OnPhysicalVibration2Toggled), NULL, NULL, G_CONNECT_AFTER);
 
 	widget = GTK_WIDGET(gtk_builder_get_object(xml, widgetname_change[1]));
 	gtk_widget_set_sensitive(widget, FALSE);

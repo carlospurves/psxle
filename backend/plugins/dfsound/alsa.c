@@ -29,7 +29,7 @@ static snd_pcm_t *handle = NULL;
 static snd_pcm_uframes_t buffer_size;
 
 // SETUP SOUND
-void SetupSound(void)
+void SetupSound()
 {
  snd_pcm_hw_params_t *hwparams;
  snd_pcm_status_t *status;
@@ -46,7 +46,7 @@ void SetupSound(void)
  pspeed = 44100;
  format = SND_PCM_FORMAT_S16;
 
- if ((err = snd_pcm_open(&handle, "default", 
+ if ((err = snd_pcm_open(&handle, "default",
                       SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK)) < 0)
   {
    printf("Audio open error: %s\n", snd_strerror(err));

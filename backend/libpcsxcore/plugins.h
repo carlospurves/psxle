@@ -29,11 +29,14 @@ extern "C" {
 #ifndef _WIN32
 
 typedef void* HWND;
+
+typedef void (*psx_audio_cb)(int);
+
 #define CALLBACK
 
-typedef long (*GPUopen)(unsigned long *, char *, char *);
-typedef long (*SPUopen)(void);
-typedef long (*PADopen)(unsigned long *);
+typedef long (*GPUopen)(unsigned long *, char *, char *, int);
+typedef long (*SPUopen)(int*, char*, psx_audio_cb);
+typedef long (*PADopen)(unsigned long *, char*);
 typedef long (*NETopen)(unsigned long *);
 typedef long (*SIO1open)(unsigned long *);
 
@@ -78,8 +81,7 @@ typedef void (CALLBACK* GPUupdateLace)(void);
 typedef long (CALLBACK* GPUconfigure)(void);
 typedef long (CALLBACK* GPUtest)(void);
 typedef void (CALLBACK* GPUabout)(void);
-typedef void (CALLBACK* GPUmakeSnapshot)(void);
-typedef void (CALLBACK* GPUtoggleDebug)(void);
+typedef void (CALLBACK* GPUmakeSnapshot)(int);
 typedef void (CALLBACK* GPUkeypressed)(int);
 typedef void (CALLBACK* GPUdisplayText)(char *);
 typedef struct {
@@ -98,8 +100,6 @@ typedef void (CALLBACK* GPUvisualVibration)(uint32_t, uint32_t);
 typedef void (CALLBACK* GPUcursor)(int, int, int);
 typedef void (CALLBACK* GPUaddVertex)(short,short,s64,s64,s64);
 typedef void (CALLBACK* GPUsetSpeed)(float); // 1.0 = natural speed
-typedef void (CALLBACK* GPUpgxpMemory)(unsigned int, unsigned char*);
-typedef void (CALLBACK* GPUpgxpCacheVertex)(short sx, short sy, const unsigned char* _pVertex);
 
 // GPU function pointers
 extern GPUupdateLace    GPU_updateLace;
@@ -120,7 +120,6 @@ extern GPUdmaChain      GPU_dmaChain;
 extern GPUkeypressed    GPU_keypressed;
 extern GPUdisplayText   GPU_displayText;
 extern GPUmakeSnapshot  GPU_makeSnapshot;
-extern GPUtoggleDebug	GPU_toggleDebug;
 extern GPUfreeze        GPU_freeze;
 extern GPUgetScreenPic  GPU_getScreenPic;
 extern GPUshowScreenPic GPU_showScreenPic;
@@ -130,9 +129,7 @@ extern GPUvBlank        GPU_vBlank;
 extern GPUvisualVibration GPU_visualVibration;
 extern GPUcursor        GPU_cursor;
 extern GPUaddVertex     GPU_addVertex;
-extern GPUsetSpeed		GPU_setSpeed;
-extern GPUpgxpMemory	GPU_pgxpMemory;
-extern GPUpgxpCacheVertex GPU_pgxpCacheVertex;
+extern GPUsetSpeed     GPU_setSpeed;
 
 // CD-ROM Functions
 typedef long (CALLBACK* CDRinit)(void);

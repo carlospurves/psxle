@@ -3,7 +3,7 @@
                              -------------------
     begin                : Sun Mar 08 2009
     copyright            : (C) 1999-2009 by Pete Bernert
-    web                  : www.pbernert.com   
+    web                  : www.pbernert.com
  ***************************************************************************/
 
 /***************************************************************************
@@ -25,16 +25,15 @@
 #include "draw.h"
 #include "soft.h"
 #include "texture.h"
-#include "pgxp_gpu.h"
 
-////////////////////////////////////////////////////////////////////////                                          
+////////////////////////////////////////////////////////////////////////
 // defines
 ////////////////////////////////////////////////////////////////////////
 
-#define DEFOPAQUEON  glAlphaFunc(GL_EQUAL,0.0f);bBlendEnable=FALSE;glDisable(GL_BLEND);                                
+#define DEFOPAQUEON  glAlphaFunc(GL_EQUAL,0.0f);bBlendEnable=FALSE;glDisable(GL_BLEND);
 #define DEFOPAQUEOFF glAlphaFunc(GL_GREATER,0.49f);
 
-////////////////////////////////////////////////////////////////////////                                          
+////////////////////////////////////////////////////////////////////////
 // globals
 ////////////////////////////////////////////////////////////////////////
 
@@ -69,7 +68,7 @@ BOOL           bUsingTWin=FALSE;                       // tex win active flag
 BOOL           bUsingMovie=FALSE;                      // movie active flag
 PSXRect_t      xrMovieArea;                            // rect for movie upload
 short          sSprite_ux2;                            // needed for sprire adjust
-short          sSprite_vy2;                            // 
+short          sSprite_vy2;                            //
 uint32_t       ulOLDCOL=0;                             // active color
 uint32_t       ulClutID;                               // clut
 
@@ -81,7 +80,7 @@ BOOL          bUseFixes;
 int           drawX,drawY,drawW,drawH;                 // offscreen drawing checkers
 short         sxmin,sxmax,symin,symax;
 
-////////////////////////////////////////////////////////////////////////                                          
+////////////////////////////////////////////////////////////////////////
 // Update global TP infos
 ////////////////////////////////////////////////////////////////////////
 
@@ -97,7 +96,7 @@ void UpdateGlobalTP(unsigned short gdata)
      GlobalTextIL    =(gdata & 0x2000) >> 13;
      GlobalTextABR = (unsigned short)((gdata >> 7) & 0x3);
      GlobalTextTP = (gdata >> 9) & 0x3;
-     if(GlobalTextTP==3) GlobalTextTP=2;             
+     if(GlobalTextTP==3) GlobalTextTP=2;
      GlobalTexturePage = (GlobalTextAddrX>>6)+(GlobalTextAddrY>>4);
      usMirror =0;
      STATUSREG = (STATUSREG & 0xffffe000 ) | (gdata & 0x1fff );
@@ -111,7 +110,7 @@ void UpdateGlobalTP(unsigned short gdata)
  else GlobalTextAddrY = (gdata << 4) & 0x100;          // "normal" psx gpu
 
  usMirror=gdata&0x3000;
- 
+
  GlobalTextTP = (gdata >> 7) & 0x3;                    // tex mode (4,8,15)
  if(GlobalTextTP==3) GlobalTextTP=2;                   // seen in Wild9 :(
  GlobalTextABR = (gdata >> 5) & 0x3;                   // blend mode
@@ -147,262 +146,196 @@ unsigned short BGR24to16 (uint32_t BGR)
 // OpenGL primitive drawing commands
 ////////////////////////////////////////////////////////////////////////
 
-static __inline void PRIMdrawTexturedQuad(OGLVertex* vertex1, OGLVertex* vertex2, 
-                                   OGLVertex* vertex3, OGLVertex* vertex4) 
+static __inline void PRIMdrawTexturedQuad(OGLVertex* vertex1, OGLVertex* vertex2,
+                                   OGLVertex* vertex3, OGLVertex* vertex4)
 {
-	if (PGXP_vDebug)
-	{
-		if(PGXP_DrawDebugTriQuad(vertex1, vertex2, vertex4, vertex3, COLOUR_NONE, 1))
-		return;
-	}
-
  glBegin(GL_TRIANGLE_STRIP);
   glTexCoord2fv(&vertex1->sow);
-  PGXP_glVertexfv(&vertex1->x);
-  
+  glVertex3fv(&vertex1->x);
+
   glTexCoord2fv(&vertex2->sow);
-  PGXP_glVertexfv(&vertex2->x);
-  
+  glVertex3fv(&vertex2->x);
+
   glTexCoord2fv(&vertex4->sow);
-  PGXP_glVertexfv(&vertex4->x);
-  
+  glVertex3fv(&vertex4->x);
+
   glTexCoord2fv(&vertex3->sow);
-  PGXP_glVertexfv(&vertex3->x);
+  glVertex3fv(&vertex3->x);
  glEnd();
 }
 
-///////////////////////////////////////////////////////// 
+/////////////////////////////////////////////////////////
 
-static __inline void PRIMdrawTexturedTri(OGLVertex* vertex1, OGLVertex* vertex2, 
-                                  OGLVertex* vertex3) 
+static __inline void PRIMdrawTexturedTri(OGLVertex* vertex1, OGLVertex* vertex2,
+                                  OGLVertex* vertex3)
 {
-	if (PGXP_vDebug)
-	{
-		if(PGXP_DrawDebugTri(vertex1, vertex2, vertex3, COLOUR_NONE, 1))
-		return;
-	}
-
  glBegin(GL_TRIANGLES);
   glTexCoord2fv(&vertex1->sow);
-  PGXP_glVertexfv(&vertex1->x);
+  glVertex3fv(&vertex1->x);
 
   glTexCoord2fv(&vertex2->sow);
-  PGXP_glVertexfv(&vertex2->x);
+  glVertex3fv(&vertex2->x);
 
   glTexCoord2fv(&vertex3->sow);
-  PGXP_glVertexfv(&vertex3->x);
+  glVertex3fv(&vertex3->x);
  glEnd();
 }
 
-///////////////////////////////////////////////////////// 
+/////////////////////////////////////////////////////////
 
-static __inline void PRIMdrawTexGouraudTriColor(OGLVertex* vertex1, OGLVertex* vertex2, 
-                                         OGLVertex* vertex3) 
+static __inline void PRIMdrawTexGouraudTriColor(OGLVertex* vertex1, OGLVertex* vertex2,
+                                         OGLVertex* vertex3)
 {
-	if (PGXP_vDebug)
-	{
-		if(PGXP_DrawDebugTri(vertex1, vertex2, vertex3, COLOUR_SMOOTH, 1))
-		return;
-	}
-
  glBegin(GL_TRIANGLES);
 
-  SETPCOL(vertex1); 
+  SETPCOL(vertex1);
   glTexCoord2fv(&vertex1->sow);
-  PGXP_glVertexfv(&vertex1->x);
+  glVertex3fv(&vertex1->x);
 
-  SETPCOL(vertex2); 
+  SETPCOL(vertex2);
   glTexCoord2fv(&vertex2->sow);
-  PGXP_glVertexfv(&vertex2->x);
+  glVertex3fv(&vertex2->x);
 
-  SETPCOL(vertex3); 
+  SETPCOL(vertex3);
   glTexCoord2fv(&vertex3->sow);
-  PGXP_glVertexfv(&vertex3->x);
+  glVertex3fv(&vertex3->x);
  glEnd();
 }
 
-///////////////////////////////////////////////////////// 
+/////////////////////////////////////////////////////////
 
-static __inline void PRIMdrawTexGouraudTriColorQuad(OGLVertex* vertex1, OGLVertex* vertex2, 
-                                             OGLVertex* vertex3, OGLVertex* vertex4) 
+static __inline void PRIMdrawTexGouraudTriColorQuad(OGLVertex* vertex1, OGLVertex* vertex2,
+                                             OGLVertex* vertex3, OGLVertex* vertex4)
 {
-	if (PGXP_vDebug)
-	{
-		if(PGXP_DrawDebugTriQuad(vertex1, vertex2, vertex4, vertex3, COLOUR_SMOOTH, 1))
-		return;
-	}
-
  glBegin(GL_TRIANGLE_STRIP);
-  SETPCOL(vertex1); 
+  SETPCOL(vertex1);
   glTexCoord2fv(&vertex1->sow);
-  PGXP_glVertexfv(&vertex1->x);
+  glVertex3fv(&vertex1->x);
 
-  SETPCOL(vertex2); 
+  SETPCOL(vertex2);
   glTexCoord2fv(&vertex2->sow);
-  PGXP_glVertexfv(&vertex2->x);
+  glVertex3fv(&vertex2->x);
 
-  SETPCOL(vertex4); 
+  SETPCOL(vertex4);
   glTexCoord2fv(&vertex4->sow);
-  PGXP_glVertexfv(&vertex4->x);
+  glVertex3fv(&vertex4->x);
 
-  SETPCOL(vertex3); 
+  SETPCOL(vertex3);
   glTexCoord2fv(&vertex3->sow);
-  PGXP_glVertexfv(&vertex3->x);
+  glVertex3fv(&vertex3->x);
  glEnd();
 }
 
-///////////////////////////////////////////////////////// 
+/////////////////////////////////////////////////////////
 
-static __inline void PRIMdrawTri(OGLVertex* vertex1, OGLVertex* vertex2, OGLVertex* vertex3) 
+static __inline void PRIMdrawTri(OGLVertex* vertex1, OGLVertex* vertex2, OGLVertex* vertex3)
 {
-	if (PGXP_vDebug)
-	{
-		if(PGXP_DrawDebugTri(vertex1, vertex2, vertex3, COLOUR_NONE, 0))
-		return;
-	}
-
  glBegin(GL_TRIANGLES);
-  PGXP_glVertexfv(&vertex1->x);
-  PGXP_glVertexfv(&vertex2->x);
-  PGXP_glVertexfv(&vertex3->x);
+  glVertex3fv(&vertex1->x);
+  glVertex3fv(&vertex2->x);
+  glVertex3fv(&vertex3->x);
  glEnd();
 }
 
-///////////////////////////////////////////////////////// 
+/////////////////////////////////////////////////////////
 
-static __inline void PRIMdrawTri2(OGLVertex* vertex1, OGLVertex* vertex2, 
-                           OGLVertex* vertex3, OGLVertex* vertex4) 
+static __inline void PRIMdrawTri2(OGLVertex* vertex1, OGLVertex* vertex2,
+                           OGLVertex* vertex3, OGLVertex* vertex4)
 {
-	if (PGXP_vDebug)
-	{
-		if(PGXP_DrawDebugTriQuad(vertex1, vertex3, vertex2, vertex4, 0, 0))
-		return;
-	}
-
- glBegin(GL_TRIANGLE_STRIP);                           
-  PGXP_glVertexfv(&vertex1->x);
-  PGXP_glVertexfv(&vertex3->x);
-  PGXP_glVertexfv(&vertex2->x);
-  PGXP_glVertexfv(&vertex4->x);
+ glBegin(GL_TRIANGLE_STRIP);
+  glVertex3fv(&vertex1->x);
+  glVertex3fv(&vertex3->x);
+  glVertex3fv(&vertex2->x);
+  glVertex3fv(&vertex4->x);
  glEnd();
 }
 
-///////////////////////////////////////////////////////// 
+/////////////////////////////////////////////////////////
 
-static __inline void PRIMdrawGouraudTriColor(OGLVertex* vertex1, OGLVertex* vertex2, 
-                                      OGLVertex* vertex3) 
+static __inline void PRIMdrawGouraudTriColor(OGLVertex* vertex1, OGLVertex* vertex2,
+                                      OGLVertex* vertex3)
 {
-	if (PGXP_vDebug)
-	{
-		if(PGXP_DrawDebugTri(vertex1, vertex2, vertex3, COLOUR_SMOOTH, 0))
-		return;
-	}
+ glBegin(GL_TRIANGLES);
+  SETPCOL(vertex1);
+  glVertex3fv(&vertex1->x);
 
- glBegin(GL_TRIANGLES);                           
-  SETPCOL(vertex1); 
-  PGXP_glVertexfv(&vertex1->x);
-       
-  SETPCOL(vertex2); 
-  PGXP_glVertexfv(&vertex2->x);
+  SETPCOL(vertex2);
+  glVertex3fv(&vertex2->x);
 
-  SETPCOL(vertex3); 
-  PGXP_glVertexfv(&vertex3->x);
+  SETPCOL(vertex3);
+  glVertex3fv(&vertex3->x);
  glEnd();
 }
 
-///////////////////////////////////////////////////////// 
+/////////////////////////////////////////////////////////
 
-static __inline void PRIMdrawGouraudTri2Color(OGLVertex* vertex1, OGLVertex* vertex2, 
-                                       OGLVertex* vertex3, OGLVertex* vertex4) 
+static __inline void PRIMdrawGouraudTri2Color(OGLVertex* vertex1, OGLVertex* vertex2,
+                                       OGLVertex* vertex3, OGLVertex* vertex4)
 {
-	if (PGXP_vDebug)
-	{
-		if(PGXP_DrawDebugTriQuad(vertex1, vertex3, vertex2, vertex4, COLOUR_SMOOTH, 0))
-		return;
-	}
+ glBegin(GL_TRIANGLE_STRIP);
+  SETPCOL(vertex1);
+  glVertex3fv(&vertex1->x);
 
- glBegin(GL_TRIANGLE_STRIP);                           
-  SETPCOL(vertex1); 
-  PGXP_glVertexfv(&vertex1->x);
-       
-  SETPCOL(vertex3); 
-  PGXP_glVertexfv(&vertex3->x);
+  SETPCOL(vertex3);
+  glVertex3fv(&vertex3->x);
 
-  SETPCOL(vertex2); 
-  PGXP_glVertexfv(&vertex2->x);
+  SETPCOL(vertex2);
+  glVertex3fv(&vertex2->x);
 
-  SETPCOL(vertex4); 
-  PGXP_glVertexfv(&vertex4->x);
+  SETPCOL(vertex4);
+  glVertex3fv(&vertex4->x);
  glEnd();
 }
 
-///////////////////////////////////////////////////////// 
+/////////////////////////////////////////////////////////
 
 static __inline void PRIMdrawFlatLine(OGLVertex* vertex1, OGLVertex* vertex2,OGLVertex* vertex3, OGLVertex* vertex4)
 {
-	if (PGXP_vDebug)
-	{
-		if(PGXP_DrawDebugQuad(vertex1, vertex2, vertex3, vertex4, COLOUR_FLAT, 0))
-		return;
-	}
-
  glBegin(GL_QUADS);
 
-  SETPCOL(vertex1); 
+  SETPCOL(vertex1);
 
-  PGXP_glVertexfv(&vertex1->x);
-  PGXP_glVertexfv(&vertex2->x);
-  PGXP_glVertexfv(&vertex3->x);
-  PGXP_glVertexfv(&vertex4->x);
+  glVertex3fv(&vertex1->x);
+  glVertex3fv(&vertex2->x);
+  glVertex3fv(&vertex3->x);
+  glVertex3fv(&vertex4->x);
  glEnd();
 }
 
-///////////////////////////////////////////////////////// 
-     
+/////////////////////////////////////////////////////////
+
 static __inline void PRIMdrawGouraudLine(OGLVertex* vertex1, OGLVertex* vertex2,OGLVertex* vertex3, OGLVertex* vertex4)
 {
-	if (PGXP_vDebug)
-	{
-		if(PGXP_DrawDebugQuad(vertex1, vertex2, vertex3, vertex4, COLOUR_SMOOTH, 0))
-		return;
-	}
-
  glBegin(GL_QUADS);
 
-  SETPCOL(vertex1); 
-  PGXP_glVertexfv(&vertex1->x);
+  SETPCOL(vertex1);
+  glVertex3fv(&vertex1->x);
 
-  SETPCOL(vertex2); 
-  PGXP_glVertexfv(&vertex2->x);
+  SETPCOL(vertex2);
+  glVertex3fv(&vertex2->x);
 
-  SETPCOL(vertex3); 
-  PGXP_glVertexfv(&vertex3->x);
+  SETPCOL(vertex3);
+  glVertex3fv(&vertex3->x);
 
-  SETPCOL(vertex4); 
-  PGXP_glVertexfv(&vertex4->x);
+  SETPCOL(vertex4);
+  glVertex3fv(&vertex4->x);
  glEnd();
 }
 
-///////////////////////////////////////////////////////// 
-             
-static __inline void PRIMdrawQuad(OGLVertex* vertex1, OGLVertex* vertex2, 
-                           OGLVertex* vertex3, OGLVertex* vertex4) 
+/////////////////////////////////////////////////////////
+
+static __inline void PRIMdrawQuad(OGLVertex* vertex1, OGLVertex* vertex2,
+                           OGLVertex* vertex3, OGLVertex* vertex4)
 {
-	if (PGXP_vDebug)
-	{
-		if(PGXP_DrawDebugQuad(vertex1, vertex2, vertex3, vertex4, COLOUR_NONE, 0))
-		return;
-	}
-
  glBegin(GL_QUADS);
-  PGXP_glVertexfv(&vertex1->x);
-  PGXP_glVertexfv(&vertex2->x);
-  PGXP_glVertexfv(&vertex3->x);
-  PGXP_glVertexfv(&vertex4->x);
+  glVertex3fv(&vertex1->x);
+  glVertex3fv(&vertex2->x);
+  glVertex3fv(&vertex3->x);
+  glVertex3fv(&vertex4->x);
  glEnd();
 }
 
-////////////////////////////////////////////////////////////////////////                                          
+////////////////////////////////////////////////////////////////////////
 // Transparent blending settings
 ////////////////////////////////////////////////////////////////////////
 
@@ -422,7 +355,7 @@ SemiTransParams TransSets[4]=
  {GL_ONE,      GL_ONE,                255},
  {GL_ZERO,     GL_ONE_MINUS_SRC_COLOR,255},
  {GL_ONE_MINUS_SRC_ALPHA,GL_ONE,      192}
-}; 
+};
 
 ////////////////////////////////////////////////////////////////////////
 
@@ -448,7 +381,7 @@ void SetSemiTrans(void)
  if(!bBlendEnable)
   {glEnable(GL_BLEND);bBlendEnable=TRUE;}              // wanna blend
 
- if(TransSets[GlobalTextABR].srcFac!=obm1 || 
+ if(TransSets[GlobalTextABR].srcFac!=obm1 ||
     TransSets[GlobalTextABR].dstFac!=obm2)
   {
    if(glBlendEquationEXTEx==NULL)
@@ -502,9 +435,9 @@ void SetScanTexTrans(void)                             // blending for scan mask
  glBlendFunc(obm1,obm2);                               // set blend func
 }
 
-////////////////////////////////////////////////////////////////////////                                          
+////////////////////////////////////////////////////////////////////////
 // multi pass in old 'Advanced blending' mode... got it from Lewpy :)
-////////////////////////////////////////////////////////////////////////                                          
+////////////////////////////////////////////////////////////////////////
 
 SemiTransParams MultiTexTransSets[4][2]=
 {
@@ -524,9 +457,9 @@ SemiTransParams MultiTexTransSets[4][2]=
  {GL_SRC_ALPHA,GL_ONE,                127},
  {GL_ONE_MINUS_SRC_ALPHA,GL_ONE,      255}
  }
-}; 
+};
 
-////////////////////////////////////////////////////////////////////////                                          
+////////////////////////////////////////////////////////////////////////
 
 SemiTransParams MultiColTransSets[4]=
 {
@@ -534,9 +467,9 @@ SemiTransParams MultiColTransSets[4]=
  {GL_ONE,      GL_ONE,                255},
  {GL_ZERO,     GL_ONE_MINUS_SRC_COLOR,255},
  {GL_SRC_ALPHA,GL_ONE,                127}
-}; 
+};
 
-////////////////////////////////////////////////////////////////////////                                          
+////////////////////////////////////////////////////////////////////////
 
 void SetSemiTransMulti(int Pass)
 {
@@ -545,7 +478,7 @@ void SetSemiTransMulti(int Pass)
 
  ubGloAlpha=255;
  ubGloColAlpha=255;
- 
+
  // are we enabling SemiTransparent mode?
  if(DrawSemiTrans)
   {
@@ -588,8 +521,8 @@ void SetSemiTransMulti(int Pass)
   }
 }
 
-////////////////////////////////////////////////////////////////////////                                          
-// Set several rendering stuff including blending 
+////////////////////////////////////////////////////////////////////////
+// Set several rendering stuff including blending
 ////////////////////////////////////////////////////////////////////////
 
 static __inline void SetZMask3O(void)
@@ -693,9 +626,9 @@ static __inline void SetRenderState(uint32_t DrawAttributes)
 {
  bDrawNonShaded = (SHADETEXBIT(DrawAttributes)) ? TRUE : FALSE;
  DrawSemiTrans = (SEMITRANSBIT(DrawAttributes)) ? TRUE : FALSE;
-}                         
+}
 
-////////////////////////////////////////////////////////////////////////                                          
+////////////////////////////////////////////////////////////////////////
 
 static __inline void SetRenderColor(uint32_t DrawAttributes)
 {
@@ -708,8 +641,8 @@ static __inline void SetRenderColor(uint32_t DrawAttributes)
   }
 }
 
-////////////////////////////////////////////////////////////////////////                                          
-                               
+////////////////////////////////////////////////////////////////////////
+
 void SetRenderMode(uint32_t DrawAttributes, BOOL bSCol)
 {
  if((bUseMultiPass) && (bDrawTextured) && !(bDrawNonShaded))
@@ -730,7 +663,7 @@ void SetRenderMode(uint32_t DrawAttributes, BOOL bSCol)
     {bTexEnabled=TRUE;glEnable(GL_TEXTURE_2D);}
   }
  else                                                  // no texture ?
- if(bTexEnabled) 
+ if(bTexEnabled)
   {bTexEnabled=FALSE;glDisable(GL_TEXTURE_2D);}        // -> turn texturing off
 
  if(bSCol)                                             // also set color ?
@@ -752,7 +685,7 @@ void SetRenderMode(uint32_t DrawAttributes, BOOL bSCol)
    vertex[0].c.col[3]=ubGloAlpha;                      // -> set color with
    SETCOL(vertex[0]);                                  //    texture alpha
   }
- 
+
  if(bDrawSmoothShaded!=bOldSmoothShaded)               // shading changed?
   {
    if(bDrawSmoothShaded) glShadeModel(GL_SMOOTH);      // -> set actual shading
@@ -761,20 +694,20 @@ void SetRenderMode(uint32_t DrawAttributes, BOOL bSCol)
   }
 }
 
-////////////////////////////////////////////////////////////////////////                                          
+////////////////////////////////////////////////////////////////////////
 // Set Opaque multipass color
 ////////////////////////////////////////////////////////////////////////
 
 void SetOpaqueColor(uint32_t DrawAttributes)
 {
  if(bDrawNonShaded) return;                            // no shading? bye
-  
+
  DrawAttributes=DoubleBGR2RGB(DrawAttributes);         // multipass is just half color, so double it on opaque pass
  vertex[0].c.lcol=DrawAttributes|0xff000000;
  SETCOL(vertex[0]);                                    // set color
 }
 
-////////////////////////////////////////////////////////////////////////                                          
+////////////////////////////////////////////////////////////////////////
 // Fucking stupid screen coord checking
 ////////////////////////////////////////////////////////////////////////
 
@@ -825,7 +758,7 @@ BOOL bOnePointInFront(void)
 
  return TRUE;
 }
- 
+
 
 BOOL bOnePointInBack(void)
 {
@@ -843,7 +776,7 @@ BOOL bOnePointInBack(void)
 
  return TRUE;
 }
- 
+
 BOOL bDrawOffscreen4(void)
 {
  BOOL bFront;short sW,sH;
@@ -874,7 +807,7 @@ BOOL bDrawOffscreen4(void)
   }
 
  sW=drawW-1;sH=drawH-1;
- 
+
  sxmin=min(sW,max(sxmin,drawX));
  sxmax=max(drawX,min(sxmax,sW));
  symin=min(sH,max(symin,drawY));
@@ -882,14 +815,14 @@ BOOL bDrawOffscreen4(void)
 
  if(bOnePointInBack()) return bFullVRam;
 
- if(iOffscreenDrawing==2) 
+ if(iOffscreenDrawing==2)
       bFront=bDrawOffscreenFront();
  else bFront=bOnePointInFront();
 
  if(bFront)
   {
    if(PSXDisplay.InterlacedTest) return bFullVRam;      // -> ok, no need for adjust
-                               
+
    vertex[0].x=lx0 - PSXDisplay.DisplayPosition.x+PreviousPSXDisplay.Range.x0;
    vertex[1].x=lx1 - PSXDisplay.DisplayPosition.x+PreviousPSXDisplay.Range.x0;
    vertex[2].x=lx2 - PSXDisplay.DisplayPosition.x+PreviousPSXDisplay.Range.x0;
@@ -911,7 +844,7 @@ BOOL bDrawOffscreen4(void)
 }
 
 ////////////////////////////////////////////////////////////////////////
- 
+
 BOOL bDrawOffscreen3(void)
 {
  BOOL bFront;short sW,sH;
@@ -937,7 +870,7 @@ BOOL bDrawOffscreen3(void)
 
  if(bOnePointInBack()) return bFullVRam;
 
- if(iOffscreenDrawing==2) 
+ if(iOffscreenDrawing==2)
       bFront=bDrawOffscreenFront();
  else bFront=bOnePointInFront();
 
@@ -1092,7 +1025,7 @@ BOOL FastCheckAgainstFrontScreen(short imageX0,short imageY0,short imageX1,short
    xUploadArea.y1 = imageY1;
 
  if ((xUploadArea.x0 != xUploadArea.x1) && (xUploadArea.y0 != xUploadArea.y1))
-      return TRUE; 
+      return TRUE;
  else return FALSE;
 }
 
@@ -1134,7 +1067,7 @@ BOOL CheckAgainstFrontScreen(short imageX0,short imageY0,short imageX1,short ima
    xrUploadArea.y1 = imageY1;
 
  if ((xrUploadArea.x0 != xrUploadArea.x1) && (xrUploadArea.y0 != xrUploadArea.y1))
-      return TRUE; 
+      return TRUE;
  else return FALSE;
 }
 
@@ -1161,11 +1094,11 @@ void PrepareFullScreenUpload (int Position)
 
    if(bNeedRGB24Update)
     {
-     if(lClearOnSwap) 
+     if(lClearOnSwap)
       {
 //       lClearOnSwap=0;
       }
-     else    
+     else
      if(PSXDisplay.Interlaced && PreviousPSXDisplay.RGB24<2) // in interlaced mode we upload at least two full frames (GT1 menu)
       {
        PreviousPSXDisplay.RGB24++;
@@ -1222,25 +1155,10 @@ void PrepareFullScreenUpload (int Position)
 
 unsigned char * LoadDirectMovieFast(void);
 
-void UploadScreenEx(int Position)
+void UploadScreenNoGL(int Position)
 {
  short ya,yb,xa,xb,x, y, YStep, XStep, U, UStep,ux[4],vy[4];
 
- if(!PSXDisplay.DisplayMode.x) return;
- if(!PSXDisplay.DisplayMode.y) return;
-
- glDisable(GL_SCISSOR_TEST);
- glShadeModel(GL_FLAT);
- bOldSmoothShaded=FALSE;
- glDisable(GL_BLEND);
- bBlendEnable=FALSE;
- glDisable(GL_TEXTURE_2D);
- bTexEnabled=FALSE;
- glDisable(GL_ALPHA_TEST);
-
- glPixelZoom(((float)rRatioRect.right)/((float)PSXDisplay.DisplayMode.x),
-             -1.0f*(((float)rRatioRect.bottom)/((float)PSXDisplay.DisplayMode.y)));
-                                                      
  //----------------------------------------------------//
 
  YStep = 256;                                          // max texture size
@@ -1250,7 +1168,7 @@ void UploadScreenEx(int Position)
  yb    = xrUploadArea.y1;
  xa    = xrUploadArea.x0;
  xb    = xrUploadArea.x1;
- 
+
  for(y=ya;y<=yb;y+=YStep)                              // loop y
   {
    U = 0;
@@ -1279,10 +1197,86 @@ void UploadScreenEx(int Position)
 
      if ((ux[0] >= ux[2]) ||                           // -> cheaters never win...
          (vy[0] >= vy[2])) continue;                   //    (but winners always cheat...)
-                
+
      xrMovieArea.x0=lx0+U; xrMovieArea.y0=ly0;
      xrMovieArea.x1=lx2+U; xrMovieArea.y1=ly2;
-     
+
+     glDrawPixels(xrMovieArea.x1-xrMovieArea.x0,
+                  xrMovieArea.y1-xrMovieArea.y0,
+                  GL_RGBA,GL_UNSIGNED_BYTE,
+                  LoadDirectMovieFast());
+
+     U+=UStep;
+    }
+  }
+
+ //----------------------------------------------------//
+
+}
+
+////////////////////////////////////////////////////////////////
+
+void UploadScreenEx(int Position)
+{
+ short ya,yb,xa,xb,x, y, YStep, XStep, U, UStep,ux[4],vy[4];
+
+ if(!PSXDisplay.DisplayMode.x) return;
+ if(!PSXDisplay.DisplayMode.y) return;
+
+ glDisable(GL_SCISSOR_TEST);
+ glShadeModel(GL_FLAT);
+ bOldSmoothShaded=FALSE;
+ glDisable(GL_BLEND);
+ bBlendEnable=FALSE;
+ glDisable(GL_TEXTURE_2D);
+ bTexEnabled=FALSE;
+ glDisable(GL_ALPHA_TEST);
+
+ glPixelZoom(((float)rRatioRect.right)/((float)PSXDisplay.DisplayMode.x),
+             -1.0f*(((float)rRatioRect.bottom)/((float)PSXDisplay.DisplayMode.y)));
+
+ //----------------------------------------------------//
+
+ YStep = 256;                                          // max texture size
+ XStep = 256;
+ UStep = (PSXDisplay.RGB24 ? 128 : 0);
+ ya    = xrUploadArea.y0;
+ yb    = xrUploadArea.y1;
+ xa    = xrUploadArea.x0;
+ xb    = xrUploadArea.x1;
+
+ for(y=ya;y<=yb;y+=YStep)                              // loop y
+  {
+   U = 0;
+   for(x=xa;x<=xb;x+=XStep)                            // loop x
+    {
+     ly0 = ly1 = y;                                    // -> get y coords
+     ly2 = y + YStep;
+     if (ly2 > yb) ly2 = yb;
+     ly3 = ly2;
+
+     lx0 = lx3 = x;                                    // -> get x coords
+     lx1 = x + XStep;
+     if (lx1 > xb) lx1 = xb;
+
+     lx2 = lx1;
+
+     ux[0]=ux[3]=(xa - x);                             // -> set tex x coords
+     if (ux[0] < 0) ux[0]=ux[3]=0;
+     ux[2]=ux[1]=(xb - x);
+     if (ux[2] > 256) ux[2]=ux[1]=256;
+
+     vy[0]=vy[1]=(ya - y);                             // -> set tex y coords
+     if (vy[0] < 0) vy[0]=vy[1]=0;
+     vy[2]=vy[3]=(yb - y);
+     if (vy[2] > 256) vy[2]=vy[3]=256;
+
+     if ((ux[0] >= ux[2]) ||                           // -> cheaters never win...
+         (vy[0] >= vy[2])) continue;                   //    (but winners always cheat...)
+
+     xrMovieArea.x0=lx0+U; xrMovieArea.y0=ly0;
+     xrMovieArea.x1=lx2+U; xrMovieArea.y1=ly2;
+
      offsetScreenUpload(Position);
 
      glRasterPos2f(vertex[0].x,vertex[0].y);
@@ -1326,7 +1320,13 @@ void UploadScreen(int Position)
 
  if(bSkipNextFrame) return;
 
- if(dwActFixes & 2) {UploadScreenEx(Position);return;}
+ if(!usingXWindow){
+   UploadScreenNoGL(Position);
+   return;
+ }else if (dwActFixes & 2) {
+   UploadScreenEx(Position);
+   return;
+ }
 
  bUsingMovie       = TRUE;
  bDrawTextured     = TRUE;                             // just doing textures
@@ -1334,7 +1334,7 @@ void UploadScreen(int Position)
 
  if(bGLBlend) vertex[0].c.lcol=0xff7f7f7f;             // set solid col
  else          vertex[0].c.lcol=0xffffffff;
- SETCOL(vertex[0]); 
+ SETCOL(vertex[0]);
 
  SetOGLDisplaySettings(0);
 
@@ -1342,7 +1342,7 @@ void UploadScreen(int Position)
  XStep = 256;
 
  UStep = (PSXDisplay.RGB24 ? 128 : 0);
- 
+
  ya=xrUploadArea.y0;
  yb=xrUploadArea.y1;
  xa=xrUploadArea.x0;
@@ -1376,7 +1376,7 @@ void UploadScreen(int Position)
 
      if ((ux[0] >= ux[2]) ||                           // -> cheaters never win...
          (vy[0] >= vy[2])) continue;                   //    (but winners always cheat...)
-                
+
      xrMovieArea.x0=lx0+U; xrMovieArea.y0=ly0;
      xrMovieArea.x1=lx2+U; xrMovieArea.y1=ly2;
 
@@ -1407,7 +1407,7 @@ void UploadScreen(int Position)
 ////////////////////////////////////////////////////////////////////////
 
 BOOL IsCompleteInsideNextScreen(short x, short y, short xoff, short yoff)
-{        
+{
  if (x > PSXDisplay.DisplayPosition.x+1)     return FALSE;
  if ((x + xoff) < PSXDisplay.DisplayEnd.x-1) return FALSE;
  yoff+=y;
@@ -1416,7 +1416,7 @@ BOOL IsCompleteInsideNextScreen(short x, short y, short xoff, short yoff)
   {
    if ((yoff) >= PSXDisplay.DisplayPosition.y &&
        (yoff) <= PSXDisplay.DisplayEnd.y ) return TRUE;
-  }   
+  }
  if (y > PSXDisplay.DisplayPosition.y+1) return FALSE;
  if (yoff < PSXDisplay.DisplayEnd.y-1)   return FALSE;
  return TRUE;
@@ -1436,7 +1436,7 @@ BOOL IsPrimCompleteInsideNextScreen(short x, short y, short xoff, short yoff)
 }
 
 BOOL IsInsideNextScreen(short x, short y, short xoff, short yoff)
-{                    
+{
  if (x > PSXDisplay.DisplayEnd.x) return FALSE;
  if (y > PSXDisplay.DisplayEnd.y) return FALSE;
  if ((x + xoff) < PSXDisplay.DisplayPosition.x) return FALSE;
@@ -1463,7 +1463,7 @@ void cmdSTP(unsigned char * baseAddr)
  if(gdata&1) {sSetMask=0x8000;lSetMask=0x80008000;iSetMask=1;}
  else        {sSetMask=0;     lSetMask=0;         iSetMask=0;}
 
- if(gdata&2) 
+ if(gdata&2)
   {
    if(!(gdata&1)) iSetMask=2;
    bCheckMask=TRUE;
@@ -1553,7 +1553,7 @@ void cmdTextureWindow(unsigned char *baseAddr)
    TWin.UScaleFactor = 1.0f;
    TWin.VScaleFactor = 1.0f;
 #else
-   TWin.UScaleFactor = 
+   TWin.UScaleFactor =
    TWin.VScaleFactor = 1.0f/256.0f;
 #endif
   }
@@ -1562,7 +1562,7 @@ void cmdTextureWindow(unsigned char *baseAddr)
    bUsingTWin = TRUE;
 
    TWin.OPosition.y1 = TWin.Position.y1;               // -> get psx sizes
-   TWin.OPosition.x1 = TWin.Position.x1;              
+   TWin.OPosition.x1 = TWin.Position.x1;
 
    if(TWin.Position.x1<=2)   TWin.Position.x1=2;       // -> set OGL sizes
    else
@@ -1579,7 +1579,7 @@ void cmdTextureWindow(unsigned char *baseAddr)
    if(TWin.Position.x1<=128) TWin.Position.x1=128;
    else
    if(TWin.Position.x1<=256) TWin.Position.x1=256;
-   
+
    if(TWin.Position.y1<=2)   TWin.Position.y1=2;
    else
    if(TWin.Position.y1<=4)   TWin.Position.y1=4;
@@ -1658,7 +1658,7 @@ void ClampToPSXScreen(short *x0, short *y0, short *x1, short *y1)
  if (*x0 < 0)               *x0 = 0;
  else
  if (*x0 > 1023)            *x0 = 1023;
-            
+
  if (*x1 < 0)               *x1 = 0;
  else
  if (*x1 > 1023)            *x1 = 1023;
@@ -1666,7 +1666,7 @@ void ClampToPSXScreen(short *x0, short *y0, short *x1, short *y1)
  if (*y0 < 0)               *y0 = 0;
  else
  if (*y0 > iGPUHeightMask)  *y0 = iGPUHeightMask;
-            
+
  if (*y1 < 0)               *y1 = 0;
  else
  if (*y1 > iGPUHeightMask)  *y1 = iGPUHeightMask;
@@ -1751,7 +1751,7 @@ void cmdDrawAreaEnd(unsigned char * baseAddr)
    ulGPUInfoVals[INFO_DRAWEND]=gdata&0xFFFFF;
    drawH  = (gdata>>10)&0x3ff;
   }
- 
+
  if(drawH>=iGPUHeight) drawH=iGPUHeightMask;
 
  PSXDisplay.DrawArea.y1 = (short)drawH;                // for OGL drawing
@@ -1773,7 +1773,7 @@ void cmdDrawOffset(unsigned char * baseAddr)
 {
  uint32_t gdata = ((uint32_t *)baseAddr)[0];
 
- PreviousPSXDisplay.DrawOffset.x = 
+ PreviousPSXDisplay.DrawOffset.x =
   PSXDisplay.DrawOffset.x = (short)(gdata & 0x7ff);
 
  if (dwGPUVersion == 2)
@@ -1786,13 +1786,13 @@ void cmdDrawOffset(unsigned char * baseAddr)
    ulGPUInfoVals[INFO_DRAWOFF]=gdata&0x3FFFFF;
    PSXDisplay.DrawOffset.y = (short)((gdata>>11) & 0x7ff);
   }
- 
+
  PSXDisplay.DrawOffset.x=(short)(((int)PSXDisplay.DrawOffset.x<<21)>>21);
  PSXDisplay.DrawOffset.y=(short)(((int)PSXDisplay.DrawOffset.y<<21)>>21);
 
  PSXDisplay.CumulOffset.x =                            // new OGL prim offsets
   PSXDisplay.DrawOffset.x - PSXDisplay.GDrawOffset.x + PreviousPSXDisplay.Range.x0;
- PSXDisplay.CumulOffset.y = 
+ PSXDisplay.CumulOffset.y =
   PSXDisplay.DrawOffset.y - PSXDisplay.GDrawOffset.y + PreviousPSXDisplay.Range.y0;
 }
 
@@ -1831,7 +1831,7 @@ void PrepareRGB24Upload(void)
    xrUploadArea.x1-=PreviousPSXDisplay.DisplayPosition.x;
    xrUploadArea.y0-=PreviousPSXDisplay.DisplayPosition.y;
    xrUploadArea.y1-=PreviousPSXDisplay.DisplayPosition.y;
-  }  
+  }
  else
  if(CheckAgainstFrontScreen(VRAMWrite.x, VRAMWrite.y, VRAMWrite.Width, VRAMWrite.Height))
   {
@@ -1839,10 +1839,10 @@ void PrepareRGB24Upload(void)
    xrUploadArea.x1-=PSXDisplay.DisplayPosition.x;
    xrUploadArea.y0-=PSXDisplay.DisplayPosition.y;
    xrUploadArea.y1-=PSXDisplay.DisplayPosition.y;
-  }  
+  }
  else return;
 
- if(bRenderFrontBuffer) 
+ if(bRenderFrontBuffer)
   {
    updateFrontDisplay();
   }
@@ -1877,11 +1877,11 @@ void CheckWriteUpdate()
  if(PSXDisplay.RGB24) {PrepareRGB24Upload();return;}
 
  if(!PSXDisplay.InterlacedTest &&
-    CheckAgainstScreen(VRAMWrite.x, VRAMWrite.y, VRAMWrite.Width, VRAMWrite.Height)) 
+    CheckAgainstScreen(VRAMWrite.x, VRAMWrite.y, VRAMWrite.Width, VRAMWrite.Height))
   {
    if(dwActFixes&0x800) return;
 
-   if(bRenderFrontBuffer) 
+   if(bRenderFrontBuffer)
     {
      updateFrontDisplay();
     }
@@ -1890,14 +1890,14 @@ void CheckWriteUpdate()
 
    bNeedUploadTest=TRUE;
   }
- else 
+ else
  if(iOffscreenDrawing)
   {
-   if (CheckAgainstFrontScreen(VRAMWrite.x, VRAMWrite.y, VRAMWrite.Width, VRAMWrite.Height)) 
+   if (CheckAgainstFrontScreen(VRAMWrite.x, VRAMWrite.y, VRAMWrite.Width, VRAMWrite.Height))
     {
      if(PSXDisplay.InterlacedTest)
       {
-       if(PreviousPSXDisplay.InterlacedNew) 
+       if(PreviousPSXDisplay.InterlacedNew)
         {
          PreviousPSXDisplay.InterlacedNew=FALSE;
          bNeedInterlaceUpdate=TRUE;
@@ -1995,17 +1995,17 @@ void primBlkFill(unsigned char * baseAddr)
 
  // Increase H & W if they are one short of full values, because they never can be full values
  if (sprtH == iGPUHeightMask)  sprtH=iGPUHeight;
- if (sprtW == 1023)            sprtW=1024; 
-        
+ if (sprtW == 1023)            sprtW=1024;
+
  // x and y of start
  ly0 = ly1 = sprtY;
  ly2 = ly3 = (sprtY+sprtH);
  lx0 = lx3 = sprtX;
  lx1 = lx2 = (sprtX+sprtW);
 
- offsetBlk(gpuData);
+ offsetBlk();
 
- if(ClipVertexListScreen())                           
+ if(ClipVertexListScreen())
   {
    PSXDisplay_t * pd;
    if(PSXDisplay.InterlacedTest) pd=&PSXDisplay;
@@ -2020,10 +2020,10 @@ void primBlkFill(unsigned char * baseAddr)
      g=((GLclampf)GREEN(gpuData[0]))/255.0f;
      b=((GLclampf)BLUE(gpuData[0]))/255.0f;
      r=((GLclampf)RED(gpuData[0]))/255.0f;
-     
-     glDisable(GL_SCISSOR_TEST);                       
+
+     glDisable(GL_SCISSOR_TEST);
      glClearColor(r,g,b,1.0f);
-     glClear(uiBufferBits); 
+     glClear(uiBufferBits);
      gl_z=0.0f;
 
      if(gpuData[0]!=0x02000000 &&
@@ -2035,7 +2035,7 @@ void primBlkFill(unsigned char * baseAddr)
        SetRenderState((uint32_t)0x01000000);
        SetRenderMode((uint32_t)0x01000000, FALSE);
        vertex[0].c.lcol=0xff000000;
-       SETCOL(vertex[0]); 
+       SETCOL(vertex[0]);
        if(ly0>pd->DisplayPosition.y)
         {
          vertex[0].x=0;vertex[0].y=0;
@@ -2054,7 +2054,7 @@ void primBlkFill(unsigned char * baseAddr)
         }
       }
 
-     glEnable(GL_SCISSOR_TEST);                       
+     glEnable(GL_SCISSOR_TEST);
     }
    else
     {
@@ -2063,10 +2063,10 @@ void primBlkFill(unsigned char * baseAddr)
      SetRenderState((uint32_t)0x01000000);
      SetRenderMode((uint32_t)0x01000000, FALSE);
      vertex[0].c.lcol=gpuData[0]|0xff000000;
-     SETCOL(vertex[0]); 
-     glDisable(GL_SCISSOR_TEST);                       
+     SETCOL(vertex[0]);
+     glDisable(GL_SCISSOR_TEST);
      PRIMdrawQuad(&vertex[0], &vertex[1], &vertex[2], &vertex[3]);
-     glEnable(GL_SCISSOR_TEST);                       
+     glEnable(GL_SCISSOR_TEST);
     }
   }
 
@@ -2083,7 +2083,7 @@ void primBlkFill(unsigned char * baseAddr)
   {
    ClampToPSXScreenOffset( &sprtX, &sprtY, &sprtW, &sprtH);
    if ((sprtW == 0) || (sprtH == 0)) return;
-   InvalidateTextureArea(sprtX, sprtY, sprtW-1, sprtH-1);   
+   InvalidateTextureArea(sprtX, sprtY, sprtW-1, sprtH-1);
 
    sprtW+=sprtX;
    sprtH+=sprtY;
@@ -2091,7 +2091,7 @@ void primBlkFill(unsigned char * baseAddr)
    FillSoftwareArea(sprtX, sprtY, sprtW, sprtH, BGR24to16(gpuData[0]));
   }
 }
-  
+
 ////////////////////////////////////////////////////////////////////////
 // cmd: move image vram -> vram
 ////////////////////////////////////////////////////////////////////////
@@ -2107,7 +2107,7 @@ void MoveImageWrapped(short imageX0,short imageY0,
    imageXE=imageX0+imageSX;
    imageYE=imageY0+imageSY;
 
-   if(imageYE>iGPUHeight && imageXE>1024) 
+   if(imageYE>iGPUHeight && imageXE>1024)
     {
      CheckVRamRead(0,0,
                    (imageXE&0x3ff),
@@ -2115,23 +2115,23 @@ void MoveImageWrapped(short imageX0,short imageY0,
                    FALSE);
     }
 
-   if(imageXE>1024) 
+   if(imageXE>1024)
     {
-     CheckVRamRead(0,imageY0, 
+     CheckVRamRead(0,imageY0,
                    (imageXE&0x3ff),
                    (imageYE>iGPUHeight)?iGPUHeight:imageYE,
                    FALSE);
     }
 
-   if(imageYE>iGPUHeight) 
+   if(imageYE>iGPUHeight)
     {
-     CheckVRamRead(imageX0,0, 
+     CheckVRamRead(imageX0,0,
                    (imageXE>1024)?1024:imageXE,
                    imageYE&iGPUHeightMask,
                    FALSE);
     }
 
-   CheckVRamRead(imageX0,imageY0, 
+   CheckVRamRead(imageX0,imageY0,
                  (imageXE>1024)?1024:imageXE,
                  (imageYE>iGPUHeight)?iGPUHeight:imageYE,
                  FALSE);
@@ -2147,21 +2147,21 @@ void MoveImageWrapped(short imageX0,short imageY0,
    imageXE=imageX1+imageSX;
    imageYE=imageY1+imageSY;
 
-   if(imageYE>iGPUHeight && imageXE>1024) 
+   if(imageYE>iGPUHeight && imageXE>1024)
     {
      InvalidateTextureArea(0,0,
                            (imageXE&0x3ff)-1,
                            (imageYE&iGPUHeightMask)-1);
     }
 
-   if(imageXE>1024) 
+   if(imageXE>1024)
     {
      InvalidateTextureArea(0,imageY1,
                            (imageXE&0x3ff)-1,
                            ((imageYE>iGPUHeight)?iGPUHeight:imageYE)-imageY1-1);
     }
 
-   if(imageYE>iGPUHeight) 
+   if(imageYE>iGPUHeight)
     {
      InvalidateTextureArea(imageX1,0,
                            ((imageXE>1024)?1024:imageXE)-imageX1-1,
@@ -2188,7 +2188,7 @@ void primMoveImage(unsigned char * baseAddr)
  imageSX = sgpuData[6];
  imageSY = sgpuData[7];
 
- if((imageX0 == imageX1) && (imageY0 == imageY1)) return;  
+ if((imageX0 == imageX1) && (imageY0 == imageY1)) return;
  if(imageSX<=0) return;
  if(imageSY<=0) return;
 
@@ -2207,7 +2207,7 @@ void primMoveImage(unsigned char * baseAddr)
   }
 
  if(iFrameReadType&2)
-  CheckVRamRead(imageX0,imageY0, 
+  CheckVRamRead(imageX0,imageY0,
                 imageX0+imageSX,
                 imageY0+imageSY,
                 FALSE);
@@ -2252,7 +2252,7 @@ void primMoveImage(unsigned char * baseAddr)
   {
    InvalidateTextureArea(imageX1,imageY1,imageSX-1,imageSY-1);
 
-   if (CheckAgainstScreen(imageX1,imageY1,imageSX,imageSY)) 
+   if (CheckAgainstScreen(imageX1,imageY1,imageSX,imageSY))
     {
      if(imageX1>=PreviousPSXDisplay.DisplayPosition.x &&
         imageX1<PreviousPSXDisplay.DisplayEnd.x &&
@@ -2271,14 +2271,14 @@ void primMoveImage(unsigned char * baseAddr)
                imageX0>=PSXDisplay.DisplayPosition.x &&
                imageX0<PSXDisplay.DisplayEnd.x &&
                imageY0>=PSXDisplay.DisplayPosition.y &&
-               imageY0<PSXDisplay.DisplayEnd.y 
+               imageY0<PSXDisplay.DisplayEnd.y
               ))
           {
-           if(bRenderFrontBuffer) 
+           if(bRenderFrontBuffer)
             {
              updateFrontDisplay();
             }
- 
+
            UploadScreen(FALSE);
           }
          else bFakeFrontBuffer=TRUE;
@@ -2290,7 +2290,7 @@ void primMoveImage(unsigned char * baseAddr)
    else
    if(iOffscreenDrawing)
     {
-     if (CheckAgainstFrontScreen(imageX1,imageY1,imageSX,imageSY)) 
+     if (CheckAgainstFrontScreen(imageX1,imageY1,imageSX,imageSY))
       {
        if(!PSXDisplay.InterlacedTest &&
 //          !bFullVRam &&
@@ -2332,7 +2332,7 @@ void primMoveImage(unsigned char * baseAddr)
 
 
 ////////////////////////////////////////////////////////////////////////
-// cmd: draw free-size Tile 
+// cmd: draw free-size Tile
 ////////////////////////////////////////////////////////////////////////
 
 void primTileS(unsigned char * baseAddr)
@@ -2350,10 +2350,10 @@ void primTileS(unsigned char * baseAddr)
  lx0 = sprtX;
  ly0 = sprtY;
 
- offsetST(gpuData);
+ offsetST();
 
  if((dwActFixes&1) &&                                  // FF7 special game gix (battle cursor)
-    sprtX==0 && sprtY==0 && sprtW==24 && sprtH==16) 
+    sprtX==0 && sprtY==0 && sprtW==24 && sprtH==16)
   return;
 
  bDrawTextured = FALSE;
@@ -2375,9 +2375,9 @@ void primTileS(unsigned char * baseAddr)
     {
      if(!(iTileCheat && sprtH==32 && gpuData[0]==0x60ffffff)) // special cheat for certain ZiNc games
       {
-       InvalidateTextureAreaEx();   
+       InvalidateTextureAreaEx();
        FillSoftwareAreaTrans(lx0,ly0,lx2,ly2,
-                             BGR24to16(gpuData[0]));  
+                             BGR24to16(gpuData[0]));
       }
     }
   }
@@ -2389,8 +2389,8 @@ void primTileS(unsigned char * baseAddr)
 
  vertex[0].c.lcol=gpuData[0];
  vertex[0].c.col[3]=ubGloColAlpha;
- SETCOL(vertex[0]); 
- 
+ SETCOL(vertex[0]);
+
  PRIMdrawQuad(&vertex[0], &vertex[1], &vertex[2], &vertex[3]);
 
  iDrawnSomething=1;
@@ -2413,7 +2413,7 @@ void primTile1(unsigned char * baseAddr)
  lx0 = sprtX;
  ly0 = sprtY;
 
- offsetST(gpuData);
+ offsetST();
 
  bDrawTextured = FALSE;
  bDrawSmoothShaded = FALSE;
@@ -2426,9 +2426,9 @@ void primTile1(unsigned char * baseAddr)
 
    if(bDrawOffscreen4())
     {
-     InvalidateTextureAreaEx();   
+     InvalidateTextureAreaEx();
      FillSoftwareAreaTrans(lx0,ly0,lx2,ly2,
-                           BGR24to16(gpuData[0]));          
+                           BGR24to16(gpuData[0]));
     }
   }
 
@@ -2436,7 +2436,7 @@ void primTile1(unsigned char * baseAddr)
  SetZMask4NT();
 
  vertex[0].c.lcol=gpuData[0];vertex[0].c.col[3]=ubGloColAlpha;
- SETCOL(vertex[0]); 
+ SETCOL(vertex[0]);
 
  PRIMdrawQuad(&vertex[0], &vertex[1], &vertex[2], &vertex[3]);
 
@@ -2460,7 +2460,7 @@ void primTile8(unsigned char * baseAddr)
  lx0 = sprtX;
  ly0 = sprtY;
 
- offsetST(gpuData);
+ offsetST();
 
  bDrawTextured = FALSE;
  bDrawSmoothShaded = FALSE;
@@ -2472,9 +2472,9 @@ void primTile8(unsigned char * baseAddr)
 
    if(bDrawOffscreen4())
     {
-     InvalidateTextureAreaEx();   
+     InvalidateTextureAreaEx();
      FillSoftwareAreaTrans(lx0,ly0,lx2,ly2,
-                           BGR24to16(gpuData[0]));    
+                           BGR24to16(gpuData[0]));
     }
   }
 
@@ -2483,7 +2483,7 @@ void primTile8(unsigned char * baseAddr)
 
  vertex[0].c.lcol=gpuData[0];
  vertex[0].c.col[3]=ubGloColAlpha;
- SETCOL(vertex[0]); 
+ SETCOL(vertex[0]);
 
  PRIMdrawQuad(&vertex[0], &vertex[1], &vertex[2], &vertex[3]);
 
@@ -2507,7 +2507,7 @@ void primTile16(unsigned char * baseAddr)
  lx0 = sprtX;
  ly0 = sprtY;
 
- offsetST(gpuData);
+ offsetST();
 
  bDrawTextured = FALSE;
  bDrawSmoothShaded = FALSE;
@@ -2519,9 +2519,9 @@ void primTile16(unsigned char * baseAddr)
 
    if(bDrawOffscreen4())
     {
-     InvalidateTextureAreaEx();   
+     InvalidateTextureAreaEx();
      FillSoftwareAreaTrans(lx0,ly0,lx2,ly2,
-                           BGR24to16(gpuData[0]));    
+                           BGR24to16(gpuData[0]));
     }
   }
 
@@ -2530,7 +2530,7 @@ void primTile16(unsigned char * baseAddr)
 
  vertex[0].c.lcol=gpuData[0];
  vertex[0].c.col[3]=ubGloColAlpha;
- SETCOL(vertex[0]); 
+ SETCOL(vertex[0]);
 
  PRIMdrawQuad(&vertex[0], &vertex[1], &vertex[2], &vertex[3]);
 
@@ -2549,14 +2549,8 @@ void DrawMultiBlur(void)
  lABR=GlobalTextABR;
  lDST=DrawSemiTrans;
 
- fx=(float)PSXDisplay.DisplayMode.x/(float)(iResX); 
+ fx=(float)PSXDisplay.DisplayMode.x/(float)(iResX);
  fy=(float)PSXDisplay.DisplayMode.y/(float)(iResY);
-
- for (unsigned int i = 0; i < 4; ++i)
- {
-	 vertex[i].PGXP_flag = 999;
-	 vertex[i].w = 1.f;
- }
 
  vertex[0].x+=fx;vertex[1].x+=fx;
  vertex[2].x+=fx;vertex[3].x+=fx;
@@ -2585,7 +2579,7 @@ void DrawMultiFilterSprite(void)
 {
  int lABR,lDST;
 
- if(bUseMultiPass || DrawSemiTrans || ubOpaqueDraw) 
+ if(bUseMultiPass || DrawSemiTrans || ubOpaqueDraw)
   {
    PRIMdrawTexturedQuad(&vertex[0], &vertex[1], &vertex[2], &vertex[3]);
    return;
@@ -2628,12 +2622,12 @@ void primSprt8(unsigned char * baseAddr)
  lx0 = sprtX;
  ly0 = sprtY;
 
- offsetST(gpuData);
+ offsetST();
 
  // do texture stuff
  gl_ux[0]=gl_ux[3]=baseAddr[8];//gpuData[2]&0xff;
 
- if(usMirror & 0x1000) 
+ if(usMirror & 0x1000)
   {
    s=gl_ux[0];
    s-=sprtW-1;
@@ -2641,14 +2635,14 @@ void primSprt8(unsigned char * baseAddr)
    gl_ux[0]=gl_ux[3]=s;
   }
 
- sSprite_ux2=s=gl_ux[0]+sprtW; 
+ sSprite_ux2=s=gl_ux[0]+sprtW;
  if(s)     s--;
  if(s>255) s=255;
  gl_ux[1]=gl_ux[2]=s;
  // Y coords
  gl_vy[0]=gl_vy[1]=baseAddr[9];//(gpuData[2]>>8)&0xff;
 
- if(usMirror & 0x2000) 
+ if(usMirror & 0x2000)
   {
    s=gl_vy[0];
    s-=sprtH-1;
@@ -2656,7 +2650,7 @@ void primSprt8(unsigned char * baseAddr)
    gl_vy[0]=gl_vy[1]=s;
   }
 
- sSprite_vy2=s=gl_vy[0]+sprtH; 
+ sSprite_vy2=s=gl_vy[0]+sprtH;
  if(s)     s--;
  if(s>255) s=255;
  gl_vy[2]=gl_vy[3]=s;
@@ -2667,13 +2661,13 @@ void primSprt8(unsigned char * baseAddr)
  bDrawSmoothShaded = FALSE;
  SetRenderState(gpuData[0]);
 
- if(iOffscreenDrawing)      
+ if(iOffscreenDrawing)
   {
    offsetPSX4();
 
    if(bDrawOffscreen4())
     {
-     InvalidateTextureAreaEx();   
+     InvalidateTextureAreaEx();
      SetRenderColor(gpuData[0]);
      lx0-=PSXDisplay.DrawOffset.x;
      ly0-=PSXDisplay.DrawOffset.y;
@@ -2694,7 +2688,7 @@ void primSprt8(unsigned char * baseAddr)
 
  assignTextureSprite();
 
- if(iFilterType>4) 
+ if(iFilterType>4)
   DrawMultiFilterSprite();
  else
   PRIMdrawTexturedQuad(&vertex[0], &vertex[1], &vertex[2], &vertex[3]);
@@ -2749,12 +2743,12 @@ void primSprt16(unsigned char * baseAddr)
  lx0 = sprtX;
  ly0 = sprtY;
 
- offsetST(gpuData);
+ offsetST();
 
  // do texture stuff
  gl_ux[0]=gl_ux[3]=baseAddr[8];//gpuData[2]&0xff;
 
- if(usMirror & 0x1000) 
+ if(usMirror & 0x1000)
   {
    s=gl_ux[0];
    s-=sprtW-1;
@@ -2762,14 +2756,14 @@ void primSprt16(unsigned char * baseAddr)
    gl_ux[0]=gl_ux[3]=s;
   }
 
- sSprite_ux2=s=gl_ux[0]+sprtW; 
+ sSprite_ux2=s=gl_ux[0]+sprtW;
  if(s)     s--;
  if(s>255) s=255;
- gl_ux[1]=gl_ux[2]=s; 
+ gl_ux[1]=gl_ux[2]=s;
  // Y coords
  gl_vy[0]=gl_vy[1]=baseAddr[9];//(gpuData[2]>>8)&0xff;
 
- if(usMirror & 0x2000) 
+ if(usMirror & 0x2000)
   {
    s=gl_vy[0];
    s-=sprtH-1;
@@ -2777,7 +2771,7 @@ void primSprt16(unsigned char * baseAddr)
    gl_vy[0]=gl_vy[1]=s;
   }
 
- sSprite_vy2=s=gl_vy[0]+sprtH; 
+ sSprite_vy2=s=gl_vy[0]+sprtH;
  if(s)     s--;
  if(s>255) s=255;
  gl_vy[2]=gl_vy[3]=s;
@@ -2788,13 +2782,13 @@ void primSprt16(unsigned char * baseAddr)
  bDrawSmoothShaded = FALSE;
  SetRenderState(gpuData[0]);
 
- if(iOffscreenDrawing)  
+ if(iOffscreenDrawing)
   {
    offsetPSX4();
 
    if(bDrawOffscreen4())
     {
-     InvalidateTextureAreaEx();   
+     InvalidateTextureAreaEx();
      SetRenderColor(gpuData[0]);
      lx0-=PSXDisplay.DrawOffset.x;
      ly0-=PSXDisplay.DrawOffset.y;
@@ -2814,7 +2808,7 @@ void primSprt16(unsigned char * baseAddr)
 
  assignTextureSprite();
 
- if(iFilterType>4) 
+ if(iFilterType>4)
   DrawMultiFilterSprite();
  else
   PRIMdrawTexturedQuad(&vertex[0], &vertex[1], &vertex[2], &vertex[3]);
@@ -2852,7 +2846,7 @@ void primSprt16(unsigned char * baseAddr)
 ////////////////////////////////////////////////////////////////////////
 // cmd: free-size sprite (textured rect)
 ////////////////////////////////////////////////////////////////////////
- 
+
 void primSprtSRest(unsigned char * baseAddr,unsigned short type)
 {
  uint32_t *gpuData = ((uint32_t *)baseAddr);
@@ -2920,38 +2914,38 @@ void primSprtSRest(unsigned char * baseAddr,unsigned short type)
 
   }
 
- if(usMirror & 0x1000) 
+ if(usMirror & 0x1000)
   {
    s=gl_ux[0];
    s-=sprtW-1;if(s<0) s=0;
    gl_ux[0]=gl_ux[3]=s;
   }
- if(usMirror & 0x2000) 
+ if(usMirror & 0x2000)
   {
    s=gl_vy[0];
    s-=sprtH-1;if(s<0) {s=0;}
    gl_vy[0]=gl_vy[1]=s;
   }
 
- sSprite_ux2=s=gl_ux[0]+sprtW; 
+ sSprite_ux2=s=gl_ux[0]+sprtW;
  if(s>255) s=255;
  gl_ux[1]=gl_ux[2]=s;
- sSprite_vy2=s=gl_vy[0]+sprtH; 
+ sSprite_vy2=s=gl_vy[0]+sprtH;
  if(s>255) s=255;
  gl_vy[2]=gl_vy[3]=s;
 
  if(!bUsingTWin)
   {
-   if(sSprite_ux2>256) 
+   if(sSprite_ux2>256)
     {sprtW=256-gl_ux[0];sSprite_ux2=256;sTypeRest+=1;}
-   if(sSprite_vy2>256) 
+   if(sSprite_vy2>256)
     {sprtH=256-gl_vy[0];sSprite_vy2=256;sTypeRest+=2;}
   }
- 
+
  lx0 = sprtX;
  ly0 = sprtY;
 
- offsetST(gpuData);
+ offsetST();
 
  ulClutID=(gpuData[2]>>16);
 
@@ -2965,7 +2959,7 @@ void primSprtSRest(unsigned char * baseAddr,unsigned short type)
 
    if(bDrawOffscreen4())
     {
-     InvalidateTextureAreaEx();   
+     InvalidateTextureAreaEx();
      SetRenderColor(gpuData[0]);
      lx0-=PSXDisplay.DrawOffset.x;
      ly0-=PSXDisplay.DrawOffset.y;
@@ -2985,11 +2979,11 @@ void primSprtSRest(unsigned char * baseAddr,unsigned short type)
 
  assignTextureSprite();
 
- if(iFilterType>4) 
+ if(iFilterType>4)
   DrawMultiFilterSprite();
  else
   PRIMdrawTexturedQuad(&vertex[0], &vertex[1], &vertex[2], &vertex[3]);
- 
+
  if(bDrawMultiPass)
   {
    SetSemiTransMulti(1);
@@ -3016,7 +3010,7 @@ void primSprtSRest(unsigned char * baseAddr,unsigned short type)
    DEFOPAQUEOFF
   }
 
- if(sTypeRest && type<4) 
+ if(sTypeRest && type<4)
   {
    if(sTypeRest&1  && type==1) primSprtSRest(baseAddr,4);
    if(sTypeRest&2  && type==2) primSprtSRest(baseAddr,5);
@@ -3046,14 +3040,14 @@ void primSprtS(unsigned char * baseAddr)
  gl_ux[0]=gl_ux[3]=baseAddr[8];//gpuData[2]&0xff;
  gl_vy[0]=gl_vy[1]=baseAddr[9];//(gpuData[2]>>8)&0xff;
 
- if(usMirror & 0x1000) 
+ if(usMirror & 0x1000)
   {
    s=gl_ux[0];
    s-=sprtW-1;
    if(s<0) {s=0;}
    gl_ux[0]=gl_ux[3]=s;
   }
- if(usMirror & 0x2000) 
+ if(usMirror & 0x2000)
   {
    s=gl_vy[0];
    s-=sprtH-1;
@@ -3061,27 +3055,27 @@ void primSprtS(unsigned char * baseAddr)
    gl_vy[0]=gl_vy[1]=s;
   }
 
- sSprite_ux2=s=gl_ux[0]+sprtW; 
+ sSprite_ux2=s=gl_ux[0]+sprtW;
  if(s)     s--;
  if(s>255) s=255;
  gl_ux[1]=gl_ux[2]=s;
- sSprite_vy2=s=gl_vy[0]+sprtH; 
+ sSprite_vy2=s=gl_vy[0]+sprtH;
  if(s)     s--;
  if(s>255) s=255;
  gl_vy[2]=gl_vy[3]=s;
 
  if(!bUsingTWin)
   {
-   if(sSprite_ux2>256) 
+   if(sSprite_ux2>256)
     {sprtW=256-gl_ux[0];sSprite_ux2=256;sTypeRest+=1;}
-   if(sSprite_vy2>256) 
+   if(sSprite_vy2>256)
     {sprtH=256-gl_vy[0];sSprite_vy2=256;sTypeRest+=2;}
   }
 
  lx0 = sprtX;
  ly0 = sprtY;
 
- offsetST(gpuData);
+ offsetST();
 
  ulClutID=(gpuData[2]>>16);
 
@@ -3095,7 +3089,7 @@ void primSprtS(unsigned char * baseAddr)
 
    if(bDrawOffscreen4())
     {
-     InvalidateTextureAreaEx();   
+     InvalidateTextureAreaEx();
      SetRenderColor(gpuData[0]);
      lx0-=PSXDisplay.DrawOffset.x;
      ly0-=PSXDisplay.DrawOffset.y;
@@ -3110,7 +3104,7 @@ void primSprtS(unsigned char * baseAddr)
  SetRenderMode(gpuData[0], TRUE);
  SetZMask4SP();
 
- if((dwActFixes&1) && gTexFrameName && gTexName==gTexFrameName) 
+ if((dwActFixes&1) && gTexFrameName && gTexName==gTexFrameName)
   {iSpriteTex=0;return;}
 
  sSprite_ux2=gl_ux[0]+sprtW;
@@ -3118,11 +3112,11 @@ void primSprtS(unsigned char * baseAddr)
 
  assignTextureSprite();
 
- if(iFilterType>4) 
+ if(iFilterType>4)
   DrawMultiFilterSprite();
  else
   PRIMdrawTexturedQuad(&vertex[0], &vertex[1], &vertex[2], &vertex[3]);
- 
+
  if(bDrawMultiPass)
   {
    SetSemiTransMulti(1);
@@ -3149,7 +3143,7 @@ void primSprtS(unsigned char * baseAddr)
    DEFOPAQUEOFF
   }
 
- if(sTypeRest) 
+ if(sTypeRest)
   {
    if(sTypeRest&1)  primSprtSRest(baseAddr,1);
    if(sTypeRest&2)  primSprtSRest(baseAddr,2);
@@ -3178,7 +3172,7 @@ void primPolyF4(unsigned char *baseAddr)
  lx3 = sgpuData[8];
  ly3 = sgpuData[9];
 
- if(offset4(gpuData)) return;
+ if(offset4()) return;
 
  bDrawTextured = FALSE;
  bDrawSmoothShaded = FALSE;
@@ -3189,7 +3183,7 @@ void primPolyF4(unsigned char *baseAddr)
    offsetPSX4();
    if(bDrawOffscreen4())
     {
-     InvalidateTextureAreaEx();   
+     InvalidateTextureAreaEx();
      drawPoly4F(gpuData[0]);
     }
   }
@@ -3198,7 +3192,7 @@ void primPolyF4(unsigned char *baseAddr)
  SetZMask4NT();
 
  vertex[0].c.lcol=gpuData[0];vertex[0].c.col[3]=ubGloColAlpha;
- SETCOL(vertex[0]); 
+ SETCOL(vertex[0]);
 
  PRIMdrawTri2(&vertex[0], &vertex[1], &vertex[2],&vertex[3]);
 
@@ -3287,7 +3281,7 @@ void primPolyG4(unsigned char * baseAddr)
  lx3 = sgpuData[14];
  ly3 = sgpuData[15];
 
- if(offset4(gpuData)) return;
+ if(offset4()) return;
 
  bDrawTextured = FALSE;
  bDrawSmoothShaded = TRUE;
@@ -3301,9 +3295,9 @@ void primPolyG4(unsigned char * baseAddr)
 
    if(bDrawOffscreen4())
     {
-     InvalidateTextureAreaEx();   
+     InvalidateTextureAreaEx();
      drawPoly4G(gpuData[0], gpuData[2], gpuData[4], gpuData[6]);
-    }     
+    }
   }
 
  SetRenderMode(gpuData[0], FALSE);
@@ -3326,194 +3320,167 @@ void primPolyG4(unsigned char * baseAddr)
 // cmd: flat shaded Texture3
 ////////////////////////////////////////////////////////////////////////
 
-
-// 0 = disabled
-// 1 = enabled (default mode) 
-// 2 = enabled (aggressive mode)
-
-typedef struct 
+BOOL DoLineCheck(uint32_t *gpuData)
 {
-	short x, y;
-	short padding[2];
-}sourceVert;
+ BOOL bQuad=FALSE;short dx,dy;
 
-// Hack to deal with PS1 games rendering axis aligned lines using 1 pixel wide triangles with UVs that describe a line
-// Suitable for games like Soul Blade, Doom and Hexen
-BOOL Hack_FindLine(uint32_t *gpuData)
-{
-	int pxWidth = 1;	// width of a single pixel
-	unsigned short cornerIdx, shortIdx, longIdx;
+ if(lx0==lx1)
+  {
+   dx=lx0-lx2;if(dx<0) dx=-dx;
 
-	sourceVert* pSourceVerts = (sourceVert*)&gpuData[1];
+   if(ly1==ly2)
+    {
+     dy=ly1-ly0;if(dy<0) dy=-dy;
+     if(dx<=1)
+      {
+       vertex[3]=vertex[2];
+       vertex[2]=vertex[0];
+       vertex[2].x=vertex[3].x;
+      }
+     else
+     if(dy<=1)
+      {
+       vertex[3]=vertex[2];
+       vertex[2].y=vertex[0].y;
+      }
+     else return FALSE;
 
-	// reject 3D elements
-	if ((vertex[0].w != vertex[1].w) ||
-		(vertex[1].w != vertex[2].w))
-		return FALSE;
+     bQuad=TRUE;
+    }
+   else
+   if(ly0==ly2)
+    {
+     dy=ly0-ly1;if(dy<0) dy=-dy;
+     if(dx<=1)
+      {
+       vertex[3]=vertex[1];
+       vertex[3].x=vertex[2].x;
+      }
+     else
+     if(dy<=1)
+      {
+       vertex[3]=vertex[2];
+       vertex[3].y=vertex[1].y;
+      }
+     else return FALSE;
 
-	// find short side of triangle / end of line with 2 vertices (guess which vertex is the right angle)
-	if ((vertex[0].sow == vertex[1].sow) && (vertex[0].tow == vertex[1].tow))
-		cornerIdx = 0;
-	else if ((vertex[1].sow == vertex[2].sow) && (vertex[1].tow == vertex[2].tow))
-		cornerIdx = 1;
-	else if ((vertex[2].sow == vertex[0].sow) && (vertex[2].tow == vertex[0].tow))
-		cornerIdx = 2;
-	else
-		return FALSE;
+     bQuad=TRUE;
+    }
+  }
 
-	// assign other indices to remaining vertices
-	shortIdx = (cornerIdx + 1) % 3;
-	longIdx = (shortIdx + 1) % 3;
+ if(lx0==lx2)
+  {
+   dx=lx0-lx1;if(dx<0) dx=-dx;
 
-	// determine line orientation and check width
-	if ((vertex[cornerIdx].x == vertex[shortIdx].x) && (abs(pSourceVerts[cornerIdx].y - pSourceVerts[shortIdx].y) == pxWidth))
-	{
-		// line is horizontal
-		// determine which is truly the corner by checking against the long side, while making sure it is axis aligned
-		if (vertex[shortIdx].y == vertex[longIdx].y)
-		{
-			unsigned short tempIdx = shortIdx;
-			shortIdx = cornerIdx;
-			cornerIdx = tempIdx;
-		}
-		else if (vertex[cornerIdx].y != vertex[longIdx].y)
-			return FALSE;
+   if(ly2==ly1)
+    {
+     dy=ly2-ly0;if(dy<0) dy=-dy;
+     if(dx<=1)
+      {
+       vertex[3]=vertex[1];
+       vertex[1]=vertex[0];
+       vertex[1].x=vertex[3].x;
+      }
+     else
+     if(dy<=1)
+      {
+       vertex[3]=vertex[1];
+       vertex[1].y=vertex[0].y;
+      }
+     else return FALSE;
 
-		// flip corner index to other side of quad
-		vertex[3] = vertex[longIdx];
-		vertex[3].y = vertex[shortIdx].y;
-	}
-	else if ((vertex[cornerIdx].y == vertex[shortIdx].y) && (abs(pSourceVerts[cornerIdx].x - pSourceVerts[shortIdx].x) == pxWidth))
-	{
-		// line is vertical
-		// determine which is truly the corner by checking against the long side, while making sure it is axis aligned
-		if (vertex[shortIdx].x == vertex[longIdx].x)
-		{
-			unsigned short tempIdx = shortIdx;
-			shortIdx = cornerIdx;
-			cornerIdx = tempIdx;
-		}
-		else if (vertex[cornerIdx].x != vertex[longIdx].x)
-			return FALSE;
+     bQuad=TRUE;
+    }
+   else
+   if(ly0==ly1)
+    {
+     dy=ly2-ly0;if(dy<0) dy=-dy;
+     if(dx<=1)
+      {
+       vertex[3]=vertex[2];
+       vertex[3].x=vertex[1].x;
+      }
+     else
+     if(dy<=1)
+      {
+       vertex[3]=vertex[1];
+       vertex[3].y=vertex[2].y;
+      }
+     else return FALSE;
 
-		// flip corner index to other side of quad
-		vertex[3] = vertex[longIdx];
-		vertex[3].x = vertex[shortIdx].x;
-	}
-	else
-		return FALSE;
-	
-	// Draw Quad
-	PRIMdrawTexturedQuad(&vertex[cornerIdx], &vertex[longIdx], &vertex[3], &vertex[shortIdx]);
-	
-	if(bDrawMultiPass)
-	{
-		SetSemiTransMulti(1);
-		PRIMdrawTexturedQuad(&vertex[cornerIdx], &vertex[longIdx], &vertex[3], &vertex[shortIdx]);
-	}
-	
-	if(ubOpaqueDraw)
-	{
-		SetZMask4O();
-		if(bUseMultiPass) SetOpaqueColor(gpuData[0]);
-		DEFOPAQUEON
-		PRIMdrawTexturedQuad(&vertex[cornerIdx], &vertex[longIdx], &vertex[3], &vertex[shortIdx]);
-		DEFOPAQUEOFF
-	}
-	
-	iDrawnSomething=1;
-	
-	return TRUE;
-}
+     bQuad=TRUE;
+    }
+  }
 
+ if(lx1==lx2)
+  {
+   dx=lx1-lx0;if(dx<0) dx=-dx;
 
-// Hack to deal with PS1 games rendering axis aligned lines using 1 pixel wide triangles and force UVs to describe a line
-// Required for games like Dark Forces and Duke Nukem
-BOOL Hack_ForceLine(uint32_t *gpuData)
-{
-	int pxWidth = 1;	// width of a single pixel
-	unsigned short cornerIdx, shortIdx, longIdx;
+   if(ly1==ly0)
+    {
+     dy=ly1-ly2;if(dy<0) dy=-dy;
 
-	sourceVert* pSourceVerts = (sourceVert*)&gpuData[1];
+     if(dx<=1)
+      {
+       vertex[3]=vertex[2];
+       vertex[2].x=vertex[0].x;
+      }
+     else
+     if(dy<=1)
+      {
+       vertex[3]=vertex[2];
+       vertex[2]=vertex[0];
+       vertex[2].y=vertex[3].y;
+      }
+     else return FALSE;
 
-	// reject 3D elements
-	if ((vertex[0].w != vertex[1].w) ||
-		(vertex[1].w != vertex[2].w))
-		return FALSE;
+     bQuad=TRUE;
+    }
+   else
+   if(ly2==ly0)
+    {
+     dy=ly2-ly1;if(dy<0) dy=-dy;
 
-	// find vertical AB
-	unsigned short A, B, C;
-	if (vertex[0].x == vertex[1].x)
-		A = 0;
-	else if (vertex[1].x == vertex[2].x)
-		A = 1;
-	else if (vertex[2].x == vertex[0].x)
-		A = 2;
-	else
-		return FALSE;
+     if(dx<=1)
+      {
+       vertex[3]=vertex[1];
+       vertex[1].x=vertex[0].x;
+      }
+     else
+     if(dy<=1)
+      {
+       vertex[3]=vertex[1];
+       vertex[1]=vertex[0];
+       vertex[1].y=vertex[3].y;
+      }
+     else return FALSE;
 
-	// assign other indices to remaining vertices
-	B = (A + 1) % 3;
-	C = (B + 1) % 3;
+     bQuad=TRUE;
+    }
+  }
 
-	// find horizontal AC or BC
-	if (vertex[A].y == vertex[C].y)
-		cornerIdx = A;
-	else if (vertex[B].y == vertex[C].y)
-		cornerIdx = B;
-	else
-		return FALSE;
+ if(!bQuad) return FALSE;
 
-	// determine lengths of sides
-	if (abs(pSourceVerts[A].y - pSourceVerts[B].y) == pxWidth)
-	{
-		// is Horizontal
-		shortIdx = (cornerIdx == A) ? B : A;
-		longIdx = C;
+ PRIMdrawTexturedQuad(&vertex[0], &vertex[1], &vertex[3], &vertex[2]);
 
-		// flip corner index to other side of quad
-		vertex[3] = vertex[longIdx];
-		vertex[3].y = vertex[shortIdx].y;
-	}
-	else if (abs(pSourceVerts[A].x - pSourceVerts[C].x) == pxWidth)
-	{
-		// is Vertical
-		shortIdx = C;
-		longIdx = (cornerIdx == A) ? B : A;
+ if(bDrawMultiPass)
+  {
+   SetSemiTransMulti(1);
+   PRIMdrawTexturedQuad(&vertex[0], &vertex[1], &vertex[3], &vertex[2]);
+  }
 
-		// flip corner index to other side of quad
-		vertex[3] = vertex[longIdx];
-		vertex[3].x = vertex[shortIdx].x;
-	}
-	else
-		return FALSE;
+ if(ubOpaqueDraw)
+  {
+   SetZMask4O();
+   if(bUseMultiPass) SetOpaqueColor(gpuData[0]);
+   DEFOPAQUEON
+   PRIMdrawTexturedQuad(&vertex[0], &vertex[1], &vertex[3], &vertex[2]);
+   DEFOPAQUEOFF
+  }
 
-	// force UVs into a line along the upper or left most edge of the triangle
-	// Otherwise the wrong UVs will be sampled on second triangle and by hardware renderers
-	vertex[shortIdx].sow = vertex[cornerIdx].sow;
-	vertex[shortIdx].tow = vertex[cornerIdx].tow;
+ iDrawnSomething=1;
 
-	// Draw Quad
-	PRIMdrawTexturedQuad(&vertex[cornerIdx], &vertex[longIdx], &vertex[3], &vertex[shortIdx]);
-
-	if (bDrawMultiPass)
-	{
-		SetSemiTransMulti(1);
-		PRIMdrawTexturedQuad(&vertex[cornerIdx], &vertex[longIdx], &vertex[3], &vertex[shortIdx]);
-	}
-
-	if (ubOpaqueDraw)
-	{
-		SetZMask4O();
-		if (bUseMultiPass) SetOpaqueColor(gpuData[0]);
-		DEFOPAQUEON
-			PRIMdrawTexturedQuad(&vertex[cornerIdx], &vertex[longIdx], &vertex[3], &vertex[shortIdx]);
-		DEFOPAQUEOFF
-	}
-
-	iDrawnSomething = 1;
-
-	return TRUE;
+ return TRUE;
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -3530,8 +3497,8 @@ void primPolyFT3(unsigned char * baseAddr)
  lx2 = sgpuData[10];
  ly2 = sgpuData[11];
 
- if(offset3(gpuData)) return;
-    
+ if(offset3()) return;
+
  // do texture UV coordinates stuff
  gl_ux[0]=gl_ux[3]=baseAddr[8];//gpuData[2]&0xff;
  gl_vy[0]=gl_vy[3]=baseAddr[9];//(gpuData[2]>>8)&0xff;
@@ -3552,7 +3519,7 @@ void primPolyFT3(unsigned char * baseAddr)
    offsetPSX3();
    if(bDrawOffscreen3())
     {
-     InvalidateTextureAreaEx();   
+     InvalidateTextureAreaEx();
      SetRenderColor(gpuData[0]);
      drawPoly3FT(baseAddr);
     }
@@ -3563,18 +3530,9 @@ void primPolyFT3(unsigned char * baseAddr)
 
  assignTexture3();
 
- switch(iLineHackMode)
- {
- case 0: 
-	 break;	// disabled
- case 1:
-	 if (Hack_FindLine(gpuData))	// default mode
-		 return;
-	 break;
- case 2:
-	 if (Hack_ForceLine(gpuData))	// aggressive mode
-		 return;
-	 break;
+ if(!(dwActFixes&0x10))
+  {
+   if(DoLineCheck(gpuData)) return;
   }
 
  PRIMdrawTexturedTri(&vertex[0], &vertex[1], &vertex[2]);
@@ -3608,10 +3566,6 @@ void RectTexAlign(void)
  int UFlipped = FALSE;
  int VFlipped = FALSE;
 
- // Leverage PGXP to further avoid 3D polygons that just happen to align this way after projection
- if ((vertex[0].w != vertex[1].w) || (vertex[1].w != vertex[2].w))
-	 return;
-
  if(gTexName==gTexFrameName) return;
 
  if(ly0==ly1)
@@ -3620,7 +3574,7 @@ void RectTexAlign(void)
         (lx1==lx2 && ly2==ly3 && lx3==lx0)))
     return;
 
-   if(ly0<ly2) 
+   if(ly0<ly2)
     {
      if (vertex[0].tow > vertex[2].tow)
       VFlipped = 1;
@@ -3638,7 +3592,7 @@ void RectTexAlign(void)
         (lx2==lx1 && ly1==ly3 && lx3==lx0)))
     return;
 
-   if(ly0<ly1) 
+   if(ly0<ly1)
     {
      if (vertex[0].tow > vertex[1].tow)
       VFlipped = 3;
@@ -3656,7 +3610,7 @@ void RectTexAlign(void)
         (lx3==lx1 && ly1==ly2 && lx2==lx0)))
     return;
 
-   if(ly0<ly1) 
+   if(ly0<ly1)
     {
      if (vertex[0].tow > vertex[1].tow)
       VFlipped = 5;
@@ -3671,7 +3625,7 @@ void RectTexAlign(void)
 
  if(lx0==lx1)
   {
-   if(lx0<lx2) 
+   if(lx0<lx2)
     {
      if (vertex[0].sow > vertex[2].sow)
       UFlipped = 1;
@@ -3685,7 +3639,7 @@ void RectTexAlign(void)
  else
  if(lx0==lx2)
   {
-   if(lx0<lx1) 
+   if(lx0<lx1)
     {
      if (vertex[0].sow > vertex[1].sow)
       UFlipped = 3;
@@ -3699,7 +3653,7 @@ void RectTexAlign(void)
  else
  if(lx0==lx3)
   {
-   if(lx0<lx1) 
+   if(lx0<lx1)
     {
      if (vertex[0].sow > vertex[1].sow)
       UFlipped = 5;
@@ -3719,27 +3673,27 @@ void RectTexAlign(void)
      switch(UFlipped)
       {
        case 1:
-        vertex[2].sow+=0.95f/TWin.UScaleFactor; 
+        vertex[2].sow+=0.95f/TWin.UScaleFactor;
         vertex[3].sow+=0.95f/TWin.UScaleFactor;
         break;
        case 2:
-        vertex[0].sow+=0.95f/TWin.UScaleFactor; 
+        vertex[0].sow+=0.95f/TWin.UScaleFactor;
         vertex[1].sow+=0.95f/TWin.UScaleFactor;
         break;
        case 3:
-        vertex[1].sow+=0.95f/TWin.UScaleFactor; 
+        vertex[1].sow+=0.95f/TWin.UScaleFactor;
         vertex[3].sow+=0.95f/TWin.UScaleFactor;
         break;
        case 4:
-        vertex[0].sow+=0.95f/TWin.UScaleFactor; 
+        vertex[0].sow+=0.95f/TWin.UScaleFactor;
         vertex[2].sow+=0.95f/TWin.UScaleFactor;
         break;
        case 5:
-        vertex[1].sow+=0.95f/TWin.UScaleFactor; 
+        vertex[1].sow+=0.95f/TWin.UScaleFactor;
         vertex[2].sow+=0.95f/TWin.UScaleFactor;
         break;
        case 6:
-        vertex[0].sow+=0.95f/TWin.UScaleFactor; 
+        vertex[0].sow+=0.95f/TWin.UScaleFactor;
         vertex[3].sow+=0.95f/TWin.UScaleFactor;
         break;
       }
@@ -3749,27 +3703,27 @@ void RectTexAlign(void)
      switch(UFlipped)
       {
        case 1:
-        vertex[2].sow+=1.0f/ST_FAC; 
+        vertex[2].sow+=1.0f/ST_FAC;
         vertex[3].sow+=1.0f/ST_FAC;
         break;
        case 2:
-        vertex[0].sow+=1.0f/ST_FAC; 
+        vertex[0].sow+=1.0f/ST_FAC;
         vertex[1].sow+=1.0f/ST_FAC;
         break;
        case 3:
-        vertex[1].sow+=1.0f/ST_FAC; 
+        vertex[1].sow+=1.0f/ST_FAC;
         vertex[3].sow+=1.0f/ST_FAC;
         break;
        case 4:
-        vertex[0].sow+=1.0f/ST_FAC; 
+        vertex[0].sow+=1.0f/ST_FAC;
         vertex[2].sow+=1.0f/ST_FAC;
         break;
        case 5:
-        vertex[1].sow+=1.0f/ST_FAC; 
+        vertex[1].sow+=1.0f/ST_FAC;
         vertex[2].sow+=1.0f/ST_FAC;
         break;
        case 6:
-        vertex[0].sow+=1.0f/ST_FAC; 
+        vertex[0].sow+=1.0f/ST_FAC;
         vertex[3].sow+=1.0f/ST_FAC;
         break;
       }
@@ -3780,27 +3734,27 @@ void RectTexAlign(void)
      switch(UFlipped)
       {
        case 1:
-        vertex[2].sow+=1.0f/TWin.UScaleFactor; 
+        vertex[2].sow+=1.0f/TWin.UScaleFactor;
         vertex[3].sow+=1.0f/TWin.UScaleFactor;
         break;
        case 2:
-        vertex[0].sow+=1.0f/TWin.UScaleFactor; 
+        vertex[0].sow+=1.0f/TWin.UScaleFactor;
         vertex[1].sow+=1.0f/TWin.UScaleFactor;
         break;
        case 3:
-        vertex[1].sow+=1.0f/TWin.UScaleFactor; 
+        vertex[1].sow+=1.0f/TWin.UScaleFactor;
         vertex[3].sow+=1.0f/TWin.UScaleFactor;
         break;
        case 4:
-        vertex[0].sow+=1.0f/TWin.UScaleFactor; 
+        vertex[0].sow+=1.0f/TWin.UScaleFactor;
         vertex[2].sow+=1.0f/TWin.UScaleFactor;
         break;
        case 5:
-        vertex[1].sow+=1.0f/TWin.UScaleFactor; 
+        vertex[1].sow+=1.0f/TWin.UScaleFactor;
         vertex[2].sow+=1.0f/TWin.UScaleFactor;
         break;
        case 6:
-        vertex[0].sow+=1.0f/TWin.UScaleFactor; 
+        vertex[0].sow+=1.0f/TWin.UScaleFactor;
         vertex[3].sow+=1.0f/TWin.UScaleFactor;
         break;
       }
@@ -3810,27 +3764,27 @@ void RectTexAlign(void)
      switch(UFlipped)
       {
        case 1:
-        vertex[2].sow+=1.0f; 
+        vertex[2].sow+=1.0f;
         vertex[3].sow+=1.0f;
         break;
        case 2:
-        vertex[0].sow+=1.0f; 
+        vertex[0].sow+=1.0f;
         vertex[1].sow+=1.0f;
         break;
        case 3:
-        vertex[1].sow+=1.0f; 
+        vertex[1].sow+=1.0f;
         vertex[3].sow+=1.0f;
         break;
        case 4:
-        vertex[0].sow+=1.0f; 
+        vertex[0].sow+=1.0f;
         vertex[2].sow+=1.0f;
         break;
        case 5:
-        vertex[1].sow+=1.0f; 
+        vertex[1].sow+=1.0f;
         vertex[2].sow+=1.0f;
         break;
        case 6:
-        vertex[0].sow+=1.0f; 
+        vertex[0].sow+=1.0f;
         vertex[3].sow+=1.0f;
         break;
       }
@@ -3846,27 +3800,27 @@ void RectTexAlign(void)
      switch(VFlipped)
       {
        case 1:
-        vertex[2].tow+=0.95f/TWin.VScaleFactor; 
+        vertex[2].tow+=0.95f/TWin.VScaleFactor;
         vertex[3].tow+=0.95f/TWin.VScaleFactor;
         break;
        case 2:
-        vertex[0].tow+=0.95f/TWin.VScaleFactor; 
+        vertex[0].tow+=0.95f/TWin.VScaleFactor;
         vertex[1].tow+=0.95f/TWin.VScaleFactor;
         break;
        case 3:
-        vertex[1].tow+=0.95f/TWin.VScaleFactor; 
+        vertex[1].tow+=0.95f/TWin.VScaleFactor;
         vertex[3].tow+=0.95f/TWin.VScaleFactor;
         break;
        case 4:
-        vertex[0].tow+=0.95f/TWin.VScaleFactor; 
+        vertex[0].tow+=0.95f/TWin.VScaleFactor;
         vertex[2].tow+=0.95f/TWin.VScaleFactor;
         break;
        case 5:
-        vertex[1].tow+=0.95f/TWin.VScaleFactor; 
+        vertex[1].tow+=0.95f/TWin.VScaleFactor;
         vertex[2].tow+=0.95f/TWin.VScaleFactor;
         break;
        case 6:
-        vertex[0].tow+=0.95f/TWin.VScaleFactor; 
+        vertex[0].tow+=0.95f/TWin.VScaleFactor;
         vertex[3].tow+=0.95f/TWin.VScaleFactor;
         break;
       }
@@ -3876,11 +3830,11 @@ void RectTexAlign(void)
      switch(VFlipped)
       {
        case 1:
-        vertex[2].tow+=1.0f/ST_FAC; 
+        vertex[2].tow+=1.0f/ST_FAC;
         vertex[3].tow+=1.0f/ST_FAC;
         break;
        case 2:
-        vertex[0].tow+=1.0f/ST_FAC; 
+        vertex[0].tow+=1.0f/ST_FAC;
         vertex[1].tow+=1.0f/ST_FAC;
         break;
        case 3:
@@ -3888,7 +3842,7 @@ void RectTexAlign(void)
         vertex[3].tow+=1.0f/ST_FAC;
         break;
        case 4:
-        vertex[0].tow+=1.0f/ST_FAC; 
+        vertex[0].tow+=1.0f/ST_FAC;
         vertex[2].tow+=1.0f/ST_FAC;
         break;
        case 5:
@@ -3907,27 +3861,27 @@ void RectTexAlign(void)
      switch(VFlipped)
       {
        case 1:
-        vertex[2].tow+=1.0f/TWin.VScaleFactor; 
+        vertex[2].tow+=1.0f/TWin.VScaleFactor;
         vertex[3].tow+=1.0f/TWin.VScaleFactor;
         break;
        case 2:
-        vertex[0].tow+=1.0f/TWin.VScaleFactor; 
+        vertex[0].tow+=1.0f/TWin.VScaleFactor;
         vertex[1].tow+=1.0f/TWin.VScaleFactor;
         break;
        case 3:
-        vertex[1].tow+=1.0f/TWin.VScaleFactor; 
+        vertex[1].tow+=1.0f/TWin.VScaleFactor;
         vertex[3].tow+=1.0f/TWin.VScaleFactor;
         break;
        case 4:
-        vertex[0].tow+=1.0f/TWin.VScaleFactor; 
+        vertex[0].tow+=1.0f/TWin.VScaleFactor;
         vertex[2].tow+=1.0f/TWin.VScaleFactor;
         break;
        case 5:
-        vertex[1].tow+=1.0f/TWin.VScaleFactor; 
+        vertex[1].tow+=1.0f/TWin.VScaleFactor;
         vertex[2].tow+=1.0f/TWin.VScaleFactor;
         break;
        case 6:
-        vertex[0].tow+=1.0f/TWin.VScaleFactor; 
+        vertex[0].tow+=1.0f/TWin.VScaleFactor;
         vertex[3].tow+=1.0f/TWin.VScaleFactor;
         break;
       }
@@ -3937,27 +3891,27 @@ void RectTexAlign(void)
      switch(VFlipped)
       {
        case 1:
-        vertex[2].tow+=1.0f; 
+        vertex[2].tow+=1.0f;
         vertex[3].tow+=1.0f;
         break;
        case 2:
-        vertex[0].tow+=1.0f; 
+        vertex[0].tow+=1.0f;
         vertex[1].tow+=1.0f;
         break;
        case 3:
-        vertex[1].tow+=1.0f; 
+        vertex[1].tow+=1.0f;
         vertex[3].tow+=1.0f;
         break;
        case 4:
-        vertex[0].tow+=1.0f; 
+        vertex[0].tow+=1.0f;
         vertex[2].tow+=1.0f;
         break;
        case 5:
-        vertex[1].tow+=1.0f; 
+        vertex[1].tow+=1.0f;
         vertex[2].tow+=1.0f;
         break;
        case 6:
-        vertex[0].tow+=1.0f; 
+        vertex[0].tow+=1.0f;
         vertex[3].tow+=1.0f;
         break;
       }
@@ -3981,13 +3935,13 @@ void primPolyFT4(unsigned char * baseAddr)
  lx3 = sgpuData[14];
  ly3 = sgpuData[15];
 
- if(offset4(gpuData)) return;
+ if(offset4()) return;
 
  gl_vy[0]=baseAddr[9];//((gpuData[2]>>8)&0xff);
  gl_vy[1]=baseAddr[17];//((gpuData[4]>>8)&0xff);
  gl_vy[2]=baseAddr[25];//((gpuData[6]>>8)&0xff);
  gl_vy[3]=baseAddr[33];//((gpuData[8]>>8)&0xff);
- 
+
  gl_ux[0]=baseAddr[8];//(gpuData[2]&0xff);
  gl_ux[1]=baseAddr[16];//(gpuData[4]&0xff);
  gl_ux[2]=baseAddr[24];//(gpuData[6]&0xff);
@@ -4005,7 +3959,7 @@ void primPolyFT4(unsigned char * baseAddr)
    offsetPSX4();
    if(bDrawOffscreen4())
     {
-     InvalidateTextureAreaEx();   
+     InvalidateTextureAreaEx();
      SetRenderColor(gpuData[0]);
      drawPoly4FT(baseAddr);
     }
@@ -4055,7 +4009,7 @@ void primPolyFT4(unsigned char * baseAddr)
 ////////////////////////////////////////////////////////////////////////
 
 void primPolyGT3(unsigned char *baseAddr)
-{    
+{
  uint32_t *gpuData = ((uint32_t *) baseAddr);
  short *sgpuData = ((short *) baseAddr);
 
@@ -4066,7 +4020,7 @@ void primPolyGT3(unsigned char *baseAddr)
  lx2 = sgpuData[14];
  ly2 = sgpuData[15];
 
- if(offset3(gpuData)) return;
+ if(offset3()) return;
 
  // do texture stuff
  gl_ux[0]=gl_ux[3]=baseAddr[8];//gpuData[2]&0xff;
@@ -4078,7 +4032,7 @@ void primPolyGT3(unsigned char *baseAddr)
 
  UpdateGlobalTP((unsigned short)(gpuData[5]>>16));
  ulClutID=(gpuData[2]>>16);
-           
+
  bDrawTextured = TRUE;
  bDrawSmoothShaded = TRUE;
  SetRenderState(gpuData[0]);
@@ -4088,7 +4042,7 @@ void primPolyGT3(unsigned char *baseAddr)
    offsetPSX3();
    if(bDrawOffscreen3())
     {
-     InvalidateTextureAreaEx();   
+     InvalidateTextureAreaEx();
      drawPoly3GT(baseAddr);
     }
   }
@@ -4105,7 +4059,7 @@ void primPolyGT3(unsigned char *baseAddr)
    if(bGLBlend) vertex[0].c.lcol=0x7f7f7f;
    else         vertex[0].c.lcol=0xffffff;
    vertex[0].c.col[3]=ubGloAlpha;
-   SETCOL(vertex[0]); 
+   SETCOL(vertex[0]);
 
    PRIMdrawTexturedTri(&vertex[0], &vertex[1], &vertex[2]);
 
@@ -4116,13 +4070,13 @@ void primPolyGT3(unsigned char *baseAddr)
      PRIMdrawTexturedTri(&vertex[0], &vertex[1], &vertex[2]);
      DEFOPAQUEOFF
     }
-   return; 
+   return;
   }
 
  if(!bUseMultiPass  && !bGLBlend)
   {
-   vertex[0].c.lcol=DoubleBGR2RGB(gpuData[0]); 
-   vertex[1].c.lcol=DoubleBGR2RGB(gpuData[3]); 
+   vertex[0].c.lcol=DoubleBGR2RGB(gpuData[0]);
+   vertex[1].c.lcol=DoubleBGR2RGB(gpuData[3]);
    vertex[2].c.lcol=DoubleBGR2RGB(gpuData[6]);
   }
  else
@@ -4144,7 +4098,7 @@ void primPolyGT3(unsigned char *baseAddr)
  if(ubOpaqueDraw)
   {
    SetZMask3O();
-   if(bUseMultiPass) 
+   if(bUseMultiPass)
     {
      vertex[0].c.lcol=DoubleBGR2RGB(gpuData[0]);
      vertex[1].c.lcol=DoubleBGR2RGB(gpuData[3]);
@@ -4164,7 +4118,7 @@ void primPolyGT3(unsigned char *baseAddr)
 ////////////////////////////////////////////////////////////////////////
 
 void primPolyG3(unsigned char *baseAddr)
-{    
+{
  uint32_t *gpuData = ((uint32_t *)baseAddr);
  short *sgpuData = ((short *) baseAddr);
 
@@ -4175,18 +4129,18 @@ void primPolyG3(unsigned char *baseAddr)
  lx2 = sgpuData[10];
  ly2 = sgpuData[11];
 
- if(offset3(gpuData)) return;
+ if(offset3()) return;
 
  bDrawTextured = FALSE;
  bDrawSmoothShaded = TRUE;
  SetRenderState(gpuData[0]);
 
- if(iOffscreenDrawing) 
+ if(iOffscreenDrawing)
   {
    offsetPSX3();
    if(bDrawOffscreen3())
     {
-     InvalidateTextureAreaEx();   
+     InvalidateTextureAreaEx();
      drawPoly3G(gpuData[0], gpuData[2], gpuData[4]);
     }
   }
@@ -4197,7 +4151,7 @@ void primPolyG3(unsigned char *baseAddr)
  vertex[0].c.lcol=gpuData[0];
  vertex[1].c.lcol=gpuData[2];
  vertex[2].c.lcol=gpuData[4];
- vertex[0].c.col[3]=vertex[1].c.col[3]=vertex[2].c.col[3]=ubGloColAlpha; 
+ vertex[0].c.col[3]=vertex[1].c.col[3]=vertex[2].c.col[3]=ubGloColAlpha;
 
  PRIMdrawGouraudTriColor(&vertex[0], &vertex[1], &vertex[2]);
 
@@ -4209,7 +4163,7 @@ void primPolyG3(unsigned char *baseAddr)
 ////////////////////////////////////////////////////////////////////////
 
 void primPolyGT4(unsigned char *baseAddr)
-{ 
+{
  uint32_t *gpuData = ((uint32_t *)baseAddr);
  short *sgpuData = ((short *)baseAddr);
 
@@ -4222,7 +4176,7 @@ void primPolyGT4(unsigned char *baseAddr)
  lx3 = sgpuData[20];
  ly3 = sgpuData[21];
 
- if(offset4(gpuData)) return;
+ if(offset4()) return;
 
  // do texture stuff
  gl_ux[0]=baseAddr[8];//gpuData[2]&0xff;
@@ -4246,9 +4200,9 @@ void primPolyGT4(unsigned char *baseAddr)
    offsetPSX4();
    if(bDrawOffscreen4())
     {
-     InvalidateTextureAreaEx();   
+     InvalidateTextureAreaEx();
      drawPoly4GT(baseAddr);
-    }     
+    }
   }
 
  SetRenderMode(gpuData[0], FALSE);
@@ -4264,14 +4218,14 @@ void primPolyGT4(unsigned char *baseAddr)
    if(bGLBlend) vertex[0].c.lcol=0x7f7f7f;
    else          vertex[0].c.lcol=0xffffff;
    vertex[0].c.col[3]=ubGloAlpha;
-   SETCOL(vertex[0]); 
+   SETCOL(vertex[0]);
 
    PRIMdrawTexturedQuad(&vertex[0], &vertex[1], &vertex[3], &vertex[2]);
-  
+
    if(ubOpaqueDraw)
     {
      SetZMask4O();
-     ubGloAlpha=ubGloColAlpha=0xff;   
+     ubGloAlpha=ubGloColAlpha=0xff;
      DEFOPAQUEON
      PRIMdrawTexturedQuad(&vertex[0], &vertex[1], &vertex[3], &vertex[2]);
      DEFOPAQUEOFF
@@ -4279,7 +4233,7 @@ void primPolyGT4(unsigned char *baseAddr)
    return;
   }
 
- if(!bUseMultiPass  && !bGLBlend) 
+ if(!bUseMultiPass  && !bGLBlend)
   {
    vertex[0].c.lcol=DoubleBGR2RGB(gpuData[0]);
    vertex[1].c.lcol=DoubleBGR2RGB(gpuData[3]);
@@ -4294,10 +4248,10 @@ void primPolyGT4(unsigned char *baseAddr)
    vertex[3].c.lcol=gpuData[9];
   }
 
- vertex[0].c.col[3]=vertex[1].c.col[3]=vertex[2].c.col[3]=vertex[3].c.col[3]=ubGloAlpha; 
+ vertex[0].c.col[3]=vertex[1].c.col[3]=vertex[2].c.col[3]=vertex[3].c.col[3]=ubGloAlpha;
 
  PRIMdrawTexGouraudTriColorQuad(&vertex[0], &vertex[1], &vertex[3],&vertex[2]);
- 
+
  if(bDrawMultiPass)
   {
    SetSemiTransMulti(1);
@@ -4307,15 +4261,15 @@ void primPolyGT4(unsigned char *baseAddr)
  if(ubOpaqueDraw)
   {
    SetZMask4O();
-   if(bUseMultiPass) 
+   if(bUseMultiPass)
     {
      vertex[0].c.lcol=DoubleBGR2RGB(gpuData[0]);
      vertex[1].c.lcol=DoubleBGR2RGB(gpuData[3]);
      vertex[2].c.lcol=DoubleBGR2RGB(gpuData[6]);
      vertex[3].c.lcol=DoubleBGR2RGB(gpuData[9]);
-     vertex[0].c.col[3]=vertex[1].c.col[3]=vertex[2].c.col[3]=vertex[3].c.col[3]=ubGloAlpha; 
+     vertex[0].c.col[3]=vertex[1].c.col[3]=vertex[2].c.col[3]=vertex[3].c.col[3]=ubGloAlpha;
     }
-   ubGloAlpha=ubGloColAlpha=0xff;   
+   ubGloAlpha=ubGloColAlpha=0xff;
    DEFOPAQUEON
    PRIMdrawTexGouraudTriColorQuad(&vertex[0], &vertex[1], &vertex[3],&vertex[2]);
    DEFOPAQUEOFF
@@ -4329,7 +4283,7 @@ void primPolyGT4(unsigned char *baseAddr)
 ////////////////////////////////////////////////////////////////////////
 
 void primPolyF3(unsigned char *baseAddr)
-{    
+{
  uint32_t *gpuData = ((uint32_t *) baseAddr);
  short *sgpuData = ((short *) baseAddr);
 
@@ -4340,7 +4294,7 @@ void primPolyF3(unsigned char *baseAddr)
  lx2 = sgpuData[6];
  ly2 = sgpuData[7];
 
- if(offset3(gpuData)) return;
+ if(offset3()) return;
 
  bDrawTextured     = FALSE;
  bDrawSmoothShaded = FALSE;
@@ -4351,7 +4305,7 @@ void primPolyF3(unsigned char *baseAddr)
    offsetPSX3();
    if(bDrawOffscreen3())
     {
-     InvalidateTextureAreaEx();   
+     InvalidateTextureAreaEx();
      drawPoly3F(gpuData[0]);
     }
   }
@@ -4361,7 +4315,7 @@ void primPolyF3(unsigned char *baseAddr)
 
  vertex[0].c.lcol=gpuData[0];
  vertex[0].c.col[3]=ubGloColAlpha;
- SETCOL(vertex[0]); 
+ SETCOL(vertex[0]);
 
  PRIMdrawTri(&vertex[0], &vertex[1], &vertex[2]);
 
@@ -4373,7 +4327,7 @@ void primPolyF3(unsigned char *baseAddr)
 ////////////////////////////////////////////////////////////////////////
 
 void primLineGSkip(unsigned char *baseAddr)
-{    
+{
  uint32_t *gpuData = ((uint32_t *) baseAddr);
  short *sgpuData = ((short *) baseAddr);
  int iMax=255;
@@ -4398,7 +4352,7 @@ void primLineGSkip(unsigned char *baseAddr)
 ////////////////////////////////////////////////////////////////////////
 
 void primLineGEx(unsigned char *baseAddr)
-{    
+{
  uint32_t *gpuData = ((uint32_t *) baseAddr);
  int iMax=255;
  short cx0,cx1,cy0,cy1;int i;BOOL bDraw=TRUE;
@@ -4410,29 +4364,29 @@ void primLineGEx(unsigned char *baseAddr)
  SetZMask4NT();
 
  vertex[0].c.lcol=vertex[3].c.lcol=gpuData[0];
- vertex[0].c.col[3]=vertex[3].c.col[3]=ubGloColAlpha; 
+ vertex[0].c.col[3]=vertex[3].c.col[3]=ubGloColAlpha;
  ly1 = (short)((gpuData[1]>>16) & 0xffff);
  lx1 = (short)(gpuData[1] & 0xffff);
 
  i=2;
 
  //while((gpuData[i]>>24)!=0x55)
- //while((gpuData[i]&0x50000000)!=0x50000000) 
+ //while((gpuData[i]&0x50000000)!=0x50000000)
  // currently best way to check for poly line end:
  while(!(((gpuData[i] & 0xF000F000) == 0x50005000) && i>=4))
   {
    ly0 = ly1;lx0=lx1;
    vertex[1].c.lcol=vertex[2].c.lcol=vertex[0].c.lcol;
    vertex[0].c.lcol=vertex[3].c.lcol=gpuData[i];
-   vertex[0].c.col[3]=vertex[3].c.col[3]=ubGloColAlpha; 
+   vertex[0].c.col[3]=vertex[3].c.col[3]=ubGloColAlpha;
 
    i++;
 
    ly1 = (short)((gpuData[i]>>16) & 0xffff);
    lx1 = (short)(gpuData[i] & 0xffff);
 
-   if(offsetline(gpuData)) bDraw=FALSE; else bDraw=TRUE;
-  
+   if(offsetline()) bDraw=FALSE; else bDraw=TRUE;
+
    if (bDraw && ((lx0 != lx1) || (ly0 != ly1)))
     {
      if(iOffscreenDrawing)
@@ -4441,7 +4395,7 @@ void primLineGEx(unsigned char *baseAddr)
        offsetPSXLine();
        if(bDrawOffscreen4())
         {
-         InvalidateTextureAreaEx();   
+         InvalidateTextureAreaEx();
          drawPoly4G(gpuData[i-3],gpuData[i-1],gpuData[i-3],gpuData[i-1]);
         }
        lx0=cx0;lx1=cx1;ly0=cy0;ly1=cy1;
@@ -4449,7 +4403,7 @@ void primLineGEx(unsigned char *baseAddr)
 
      PRIMdrawGouraudLine(&vertex[0], &vertex[1], &vertex[2], &vertex[3]);
     }
-   i++;  
+   i++;
 
    if(i>iMax) break;
   }
@@ -4462,7 +4416,7 @@ void primLineGEx(unsigned char *baseAddr)
 ////////////////////////////////////////////////////////////////////////
 
 void primLineG2(unsigned char *baseAddr)
-{    
+{
  uint32_t *gpuData = ((uint32_t *) baseAddr);
  short *sgpuData = ((short *) baseAddr);
 
@@ -4473,15 +4427,15 @@ void primLineG2(unsigned char *baseAddr)
 
  vertex[0].c.lcol=vertex[3].c.lcol=gpuData[0];
  vertex[1].c.lcol=vertex[2].c.lcol=gpuData[2];
- vertex[0].c.col[3]=vertex[1].c.col[3]=vertex[2].c.col[3]=vertex[3].c.col[3]=ubGloColAlpha; 
+ vertex[0].c.col[3]=vertex[1].c.col[3]=vertex[2].c.col[3]=vertex[3].c.col[3]=ubGloColAlpha;
 
  bDrawTextured = FALSE;
  bDrawSmoothShaded = TRUE;
 
  if((lx0 == lx1) && (ly0 == ly1)) return;
-    
- if(offsetline(gpuData)) return;
-    
+
+ if(offsetline()) return;
+
  SetRenderState(gpuData[0]);
  SetRenderMode(gpuData[0], FALSE);
  SetZMask4NT();
@@ -4491,7 +4445,7 @@ void primLineG2(unsigned char *baseAddr)
    offsetPSXLine();
    if(bDrawOffscreen4())
     {
-     InvalidateTextureAreaEx();   
+     InvalidateTextureAreaEx();
      drawPoly4G(gpuData[0],gpuData[2],gpuData[0],gpuData[2]);
     }
   }
@@ -4519,7 +4473,7 @@ void primLineFSkip(unsigned char *baseAddr)
    ly1 = (short)((gpuData[i]>>16) & 0xffff);
    lx1 = (short)(gpuData[i] & 0xffff);
    i++;if(i>iMax) break;
-  }             
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -4541,16 +4495,16 @@ void primLineFEx(unsigned char *baseAddr)
  SetZMask4NT();
 
  vertex[0].c.lcol=gpuData[0];
- vertex[0].c.col[3]=ubGloColAlpha; 
+ vertex[0].c.col[3]=ubGloColAlpha;
 
  ly1 = (short)((gpuData[1]>>16) & 0xffff);
  lx1 = (short)(gpuData[1] & 0xffff);
 
  i=2;
 
-// while(!(gpuData[i]&0x40000000)) 
+// while(!(gpuData[i]&0x40000000))
 // while((gpuData[i]>>24)!=0x55)
-// while((gpuData[i]&0x50000000)!=0x50000000) 
+// while((gpuData[i]&0x50000000)!=0x50000000)
 // currently best way to check for poly line end:
  while(!(((gpuData[i] & 0xF000F000) == 0x50005000) && i>=3))
   {
@@ -4558,7 +4512,7 @@ void primLineFEx(unsigned char *baseAddr)
    ly1 = (short)((gpuData[i]>>16) & 0xffff);
    lx1 = (short)(gpuData[i] & 0xffff);
 
-   if(!offsetline(gpuData))
+   if(!offsetline())
     {
      if(iOffscreenDrawing)
       {
@@ -4566,14 +4520,14 @@ void primLineFEx(unsigned char *baseAddr)
        offsetPSXLine();
        if(bDrawOffscreen4())
         {
-         InvalidateTextureAreaEx();   
+         InvalidateTextureAreaEx();
          drawPoly4F(gpuData[0]);
         }
        lx0=cx0;lx1=cx1;ly0=cy0;ly1=cy1;
       }
      PRIMdrawFlatLine(&vertex[0], &vertex[1], &vertex[2], &vertex[3]);
     }
-                  
+
    i++;if(i>iMax) break;
   }
 
@@ -4594,7 +4548,7 @@ void primLineF2(unsigned char *baseAddr)
  lx1 = sgpuData[4];
  ly1 = sgpuData[5];
 
- if(offsetline(gpuData)) return;
+ if(offsetline()) return;
 
  bDrawTextured = FALSE;
  bDrawSmoothShaded = FALSE;
@@ -4603,19 +4557,19 @@ void primLineF2(unsigned char *baseAddr)
  SetZMask4NT();
 
  vertex[0].c.lcol=gpuData[0];
- vertex[0].c.col[3]=ubGloColAlpha; 
+ vertex[0].c.col[3]=ubGloColAlpha;
 
  if(iOffscreenDrawing)
   {
    offsetPSXLine();
    if(bDrawOffscreen4())
     {
-     InvalidateTextureAreaEx();   
+     InvalidateTextureAreaEx();
      drawPoly4F(gpuData[0]);
     }
   }
 
- //if(ClipVertexList4()) 
+ //if(ClipVertexList4())
  PRIMdrawFlatLine(&vertex[0], &vertex[1], &vertex[2], &vertex[3]);
 
  iDrawnSomething=1;
@@ -4633,7 +4587,7 @@ void primNI(unsigned char *bA)
 // cmd func ptr table
 ////////////////////////////////////////////////////////////////////////
 
-void (*primTableJ[256])(unsigned char *) = 
+void (*primTableJ[256])(unsigned char *) =
 {
     // 00
     primNI,primNI,primBlkFill,primNI,primNI,primNI,primNI,primNI,
@@ -4705,7 +4659,7 @@ void (*primTableJ[256])(unsigned char *) =
 // cmd func ptr table for skipping
 ////////////////////////////////////////////////////////////////////////
 
-void (*primTableSkip[256])(unsigned char *) = 
+void (*primTableSkip[256])(unsigned char *) =
 {
     // 00
     primNI,primNI,primBlkFill,primNI,primNI,primNI,primNI,primNI,

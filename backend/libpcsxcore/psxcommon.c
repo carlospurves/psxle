@@ -34,13 +34,8 @@ FILE *emuLog = NULL;
 u32 rewind_counter=0;
 u8 vblank_count_hideafter=0;
 
-// Used for overclocking
-u32 PsxClockSpeed = 33868800;
-
-int EmuInit() {
-	int ret = psxInit();
-	EmuSetPGXPMode(Config.PGXP_Mode);
-	return ret;
+int EmuInit(int* inputHooks, int nHooks, char* uniquePipeName) {
+	return psxInit(inputHooks, nHooks, uniquePipeName);
 }
 
 void EmuReset() {
@@ -78,10 +73,6 @@ void EmuUpdate() {
 	if (Config.RewindInterval > 0 && !(++rewind_counter%Config.RewindInterval)) {
 		CreateRewindState();
 	}
-}
-
-void EmuSetPGXPMode(u32 pgxpMode) {
-	psxSetPGXPMode(pgxpMode);
 }
 
 void __Log(char *fmt, ...) {

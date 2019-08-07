@@ -15,7 +15,9 @@
  *                                                                         *
  ***************************************************************************/
 
-void SetupSound(void);
+typedef void (*psx_audio_cb)(int);
+
+void SetupSound(int*, char*, psx_audio_cb);
 void RemoveSound(void);
 unsigned long SoundGetBytesBuffered(void);
 void SoundFeedStreamData(unsigned char* pSound,long lBytes);

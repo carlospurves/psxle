@@ -130,6 +130,10 @@ int psxMemInit();
 void psxMemReset();
 void psxMemShutdown();
 
+void silenceMemoryNotification(int keyv);
+void unsilenceMemoryNotification(int keyv);
+void writeStatusNotification(int type);
+
 u8 psxMemRead8 (u32 mem);
 u16 psxMemRead16(u32 mem);
 u32 psxMemRead32(u32 mem);

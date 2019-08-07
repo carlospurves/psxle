@@ -884,7 +884,7 @@ void sioInterrupt() {
 void LoadMcd(int mcd, char *str) {
 	FILE *f;
 	char *data = NULL;
-	char filepath[MAXPATHLEN] = { '\0' };
+	char filepath[ MAXPATHLEN ] = { '\0' };
 	const char *apppath = GetAppPath();
 
 	if (mcd == 1) data = Mcd1Data;
@@ -896,10 +896,10 @@ void LoadMcd(int mcd, char *str) {
 	}
 
 	//Getting full application path.
-	memmove(filepath, apppath, strlen(apppath));
-	strcat(filepath, str);
-
-	f = fopen(filepath, "rb");
+	memmove( filepath, apppath, strlen(apppath) );
+	strcat( filepath, str );
+	
+	f = fopen( filepath, "rb");
 	if (f == NULL) {
 		SysPrintf(_("The memory card %s doesn't exist - creating it\n"), filepath);
 		CreateMcd(filepath);
@@ -960,7 +960,6 @@ void SaveMcd(char *mcd, char *data, uint32_t adr, int size) {
 
 		fwrite(data + adr, 1, size, f);
 		fclose(f);
-		SysPrintf(_("Saving memory card %s\n"), mcd);
 		return;
 	}
 

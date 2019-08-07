@@ -3,7 +3,7 @@
 #include "externals.h"
 
 // SETUP SOUND
-void SetupSound(void)
+void SetupSound()
 {
 }
 
