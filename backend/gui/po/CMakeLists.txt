@@ -1,4 +1,4 @@
-message(STATUS "* Configuring translations")
+message("Configuring langs")
 include(Gettext)
 
 #find_package(LibArchive REQUIRED)

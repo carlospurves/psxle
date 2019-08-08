@@ -224,6 +224,8 @@ static void MemView_Dump() {
 	gtk_widget_destroy(dlg);
 }
 
+
+
 static void MemView_Patch() {
 	GtkWidget *dlg;
 	GtkWidget *box, *table, *label, *addr_edit, *val_edit;
@@ -311,19 +313,19 @@ void RunDebugMemoryDialog() {
 	GtkCellRenderer *renderer;
 	GtkTreeViewColumn *column;
 	int i;
-	
+
 	builder = gtk_builder_new();
-	
+
 	if (!gtk_builder_add_from_resource(builder, "/org/pcsxr/gui/pcsxr.ui", NULL)) {
 		g_warning("Error: interface could not be loaded!");
 		return;
 	}
-	
+
 	MemViewDlg = GTK_WIDGET(gtk_builder_get_object(builder, "MemViewDlg"));
-	
+
 	gtk_window_set_title(GTK_WINDOW(MemViewDlg), _("Memory Viewer"));
 	gtk_widget_show (MemViewDlg);
-	
+
 	widget = GTK_WIDGET(gtk_builder_get_object(builder, "GtkCList_MemView"));
 
 	renderer = gtk_cell_renderer_text_new();

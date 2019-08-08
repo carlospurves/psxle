@@ -1,6 +1,6 @@
-from setuptools import setup
+import setuptools
 
-setup(name='psx_py',
+setuptools.setup(name='psxle',
     version='0.0.1',
     author='Carlos Purves',
     packages=setuptools.find_packages(),

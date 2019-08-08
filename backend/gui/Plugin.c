@@ -30,7 +30,6 @@
 #include "../libpcsxcore/plugins.h"
 #include "../libpcsxcore/spu.h"
 #include "../libpcsxcore/cdriso.h"
-#include "../libpcsxcore/pgxp_mem.h"
 
 #include "nopic.h"
 
@@ -197,6 +196,7 @@ void PADhandleKey(int key) {
 			gpuShowPic();
 			break;
 		case XK_F3:
+			printf("Key: %i\n", XK_F3);
 			KeyStateLoad(StatesC);
 			gpuShowPic();
 			break;
@@ -230,7 +230,7 @@ void PADhandleKey(int key) {
 			GPU_displayText(Text);
 			break;
 		case XK_F8:
-			GPU_makeSnapshot();
+			GPU_makeSnapshot(0);
 			break;
 		case XK_F9:
 			SetCdOpenCaseTime(-1);
@@ -242,9 +242,6 @@ void PADhandleKey(int key) {
 
 			LidInterrupt();
 			break;
-        case XK_F11:
-            GPU_toggleDebug();
-            break;
 		case XK_F12:
 			psxReset();
 			break;
@@ -318,7 +315,7 @@ void SignalExit(int sig) {
 		strcpy(dst, ptr+1); \
 	}
 
-int _OpenPlugins() {
+int _OpenPlugins(char* pipe, int* audioSwitch, char* audioTempLocation, int displaymode,  void (*wsNotification)(int)) {
 	int ret;
 
 	signal(SIGINT, SignalExit);
@@ -327,26 +324,25 @@ int _OpenPlugins() {
 	GPU_clearDynarec(clearDynarec);
 
 	ret = CDR_open();
-	if (ret < 0) { SysMessage(_("Error opening CD-ROM plugin!")); return -1; }
-	ret = SPU_open();
-	if (ret < 0) { SysMessage(_("Error opening SPU plugin!")); return -1; }
+	if (ret < 0) { printf("Error opening CD-ROM plugin!\n"); return -3; }
+	ret = SPU_open(audioSwitch, audioTempLocation, wsNotification);
+	if (ret < 0) { printf("Error opening SPU plugin!\n"); return -4; }
 	SPU_registerCallback(SPUirq);
-	ret = GPU_open(&gpuDisp, "PCSXR", NULL);
-	if (ret < 0) { SysMessage(_("Error opening GPU plugin!")); return -1; }
-	GPU_pgxpMemory(0, PGXP_GetMem());
-	ret = PAD1_open(&gpuDisp);
+	ret = GPU_open(&gpuDisp, "PCSXR", NULL, displaymode);
+	if (ret < 0) { printf("Error opening GPU plugin!\n"); return -5; }
+	ret = PAD1_open(&gpuDisp, pipe);
 	ret |= PAD1_init(1); // Allow setting to change during run
-	if (ret < 0) { SysMessage(_("Error opening Controller 1 plugin!")); return -1; }
+	if (ret < 0) { printf("Error opening Controller 1 plugin!\n"); return -6; }
 	PAD1_registerVibration(GPU_visualVibration);
 	PAD1_registerCursor(GPU_cursor);
-	ret = PAD2_open(&gpuDisp);
+	ret = PAD2_open(&gpuDisp, pipe);
 	ret |= PAD2_init(2); // Allow setting to change during run
-	if (ret < 0) { SysMessage(_("Error opening Controller 2 plugin!")); return -1; }
+	if (ret < 0) { printf("Error opening Controller 2 plugin!\n"); return -7; }
 	PAD2_registerVibration(GPU_visualVibration);
 	PAD2_registerCursor(GPU_cursor);
 #ifdef ENABLE_SIO1API
 	ret = SIO1_open(&gpuDisp);
-	if (ret < 0) { SysMessage(_("Error opening SIO1 plugin!")); return -1; }
+	if (ret < 0) { printf("Error opening SIO1 plugin!\n"); return -8; }
 	SIO1_registerCallback(SIO1irq);
 #endif
 
@@ -411,10 +407,10 @@ int _OpenPlugins() {
 	return 0;
 }
 
-int OpenPlugins() {
+int OpenPlugins(char* str, int* sw, char* loc, int disp, void (*wsNotification)(int)) {
 	int ret;
 
-	while ((ret = _OpenPlugins()) == -2) {
+	while ((ret = _OpenPlugins(str, sw, loc, disp, wsNotification)) == -2) {
 		ReleasePlugins();
 		LoadMcds(Config.Mcd1, Config.Mcd2);
 		if (LoadPlugins() == -1) return -1;
@@ -446,4 +442,3 @@ void ClosePlugins() {
 		NET_pause();
 	}
 }
-

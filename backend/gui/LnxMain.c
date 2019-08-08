@@ -29,6 +29,7 @@
 #include <time.h>
 #include <gtk/gtk.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <dirent.h>
 #include <sys/stat.h>
 #include "../libpcsxcore/psxmem.h"
@@ -48,7 +49,6 @@
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
-#define DEBUG FALSE
 
 typedef struct {
 	size_t fsize;
@@ -63,7 +63,7 @@ enum {
 
 
 gboolean UseGui = FALSE;
-
+bool debug_global = false;
 
 pthread_t ProceedurePipeThread;
 
@@ -84,7 +84,7 @@ int integerStackValue(int value, int bottom){
 void* ProceedurePipeThreadF(void* pname) {
 		FILE * fp = fopen ("/home/carlos/procPipeDebug.txt","w");
 		if (strcmp(pname, "none") == 0) pthread_exit(NULL);
-    if (DEBUG) printf("Running Proceedure Thread...\n");
+    if (debug_global) printf("Running Proceedure Thread...\n");
 		char pipename[64];
 		sprintf(pipename, "%s-proc", pname);
 		char insbuf[1];
@@ -95,9 +95,9 @@ void* ProceedurePipeThreadF(void* pname) {
 		ins_source = open((char*)pipename, O_RDONLY);
 		while(1){
 			int b = read(ins_source, insbuf, 1);
-			if (DEBUG) printf ("Have: %i\n",b);
+			if (debug_global) printf ("Have: %i\n",b);
 			if (b==0) break;
-			if (DEBUG) printf("[PROC]	%i\n", insbuf[0]);
+			if (debug_global) printf("[PROC]	%i\n", insbuf[0]);
 			int node = insbuf[0];
 			//printf ("Enter %i\n",node);
 			if (insbuf[0]==(char)1){
@@ -107,12 +107,12 @@ void* ProceedurePipeThreadF(void* pname) {
 				ReleasePlugins();
 				freeMLAdditions();
 				StopDebugger();
-				if (DEBUG) printf("Freeing emulator...\n");
+				if (debug_global) printf("Freeing emulator...\n");
 				if (emuLog != NULL) fclose(emuLog);
 				break;
 			}else if (insbuf[0]==(char) 2){
 				// Pause Emulation
-				if (DEBUG) printf("[M]		Request Pause\n");
+				if (debug_global) printf("[M]		Request Pause\n");
 				if (emulationIsPaused){
 					// We are already paused!
 					writeStatusNotification(7);
@@ -120,7 +120,7 @@ void* ProceedurePipeThreadF(void* pname) {
 				emulationIsPaused = TRUE;
 			}else if (insbuf[0]==(char) 3){
 				// Resume Emulation
-				if (DEBUG) printf("[M]		Request Resume\n");
+				if (debug_global) printf("[M]		Request Resume\n");
 				if (!emulationIsPaused){
 					// We are already resumed!
 					writeStatusNotification(8);
@@ -128,13 +128,13 @@ void* ProceedurePipeThreadF(void* pname) {
 				emulationIsPaused = FALSE;
 			}else if (insbuf[0]==(char)11){
 				// Get render
-				if (DEBUG) printf("Snapshot requested.\n");
+				if (debug_global) printf("Snapshot requested.\n");
 				read(ins_source, insbuf, 1);
-				if (DEBUG) printf("Unique number is %i\n", insbuf[0]);
+				if (debug_global) printf("Unique number is %i\n", insbuf[0]);
 				TakeGPUSnapshot(insbuf[0]);
 			}else if (insbuf[0]==(char)12){
 				// Clear shared memory for render
-				if (DEBUG) printf("You want to clear shared memory\n");
+				if (debug_global) printf("You want to clear shared memory\n");
 				TakeGPUSnapshot(0);
 			}else if (insbuf[0]==(char)13){
 				// Headless way of pulling framebuffer
@@ -163,7 +163,7 @@ void* ProceedurePipeThreadF(void* pname) {
 				  if ((shmid = shmget(key, 128, IPC_CREAT | 0666)) < 0)
 				  {
 						perror("shmget");
-				    if (DEBUG) printf("Error getting shared memory id");
+				    if (debug_global) printf("Error getting shared memory id");
 						printf ("Error getting shared memory id\n",node);
 						break;
 				  }
@@ -172,14 +172,14 @@ void* ProceedurePipeThreadF(void* pname) {
 				  if ((shared_memory = shmat(shmid, NULL, 0)) == (char *) -1)
 				  {
 						perror("shmat");
-				    if (DEBUG) printf("Error attaching shared memory id");
+				    if (debug_global) printf("Error attaching shared memory id");
 						printf ("Error getting shared memory id\n",node);
 						break;
 				  }
 				}
 
 				memcpy(shared_memory, psxMemPointer(startindex), length);
-				if (DEBUG) printf("(Notified)\n");
+				if (debug_global) printf("(Notified)\n");
 				writeStatusNotification(11);
 
 			}else if (insbuf[0]==(char)22){
@@ -203,15 +203,15 @@ void* ProceedurePipeThreadF(void* pname) {
 				read(ins_source, outputPath, sizeofstring);
 				outputPath[sizeofstring] = '\0';
 
-				if (DEBUG) printf("Dumping %i bytes to %s\n", length, outputPath);
+				if (debug_global) printf("Dumping %i bytes to %s\n", length, outputPath);
 				FILE* fd = fopen(outputPath, "w");
 				if (fd == NULL) {
-					if (DEBUG) printf("Failed to write to file.\n");
+					if (debug_global) printf("Failed to write to file.\n");
 					continue;
 				}
 				int wrote = fwrite(psxMemPointer(startindex), sizeof(char), length, fd);
 				if (wrote != length){
-					if (DEBUG) printf("Error writing... \n");
+					if (debug_global) printf("Error writing... \n");
 				}
 				fclose(fd);
 				free(outputPath);
@@ -220,7 +220,7 @@ void* ProceedurePipeThreadF(void* pname) {
 			}else if (insbuf[0]==(char)23){
 				// Remove shared memory used for PSX memory query
 				if (shared_memory_setup == 1){
-					if (DEBUG) printf("[M]		Removing shared memory...\n");
+					if (debug_global) printf("[M]		Removing shared memory...\n");
 					shmdt(shmid);
 					shmctl(shmid, IPC_RMID, NULL);
 					shared_memory_setup = 0;
@@ -267,7 +267,7 @@ void* ProceedurePipeThreadF(void* pname) {
 					psxMemWrite8(startindex, value);
 					usleep(5000);
 				}
-				if (DEBUG) printf("Finished drilling.\n");
+				if (debug_global) printf("Finished drilling.\n");
 				writeStatusNotification(6);
 			}else if (insbuf[0]==(char)31){
 				// Start recording audio
@@ -275,16 +275,16 @@ void* ProceedurePipeThreadF(void* pname) {
 				char sizeofstring = insbuf[0];
 				read(ins_source, audioRecordPath, sizeofstring);
 				audioRecordPath[sizeofstring] = '\0';
-				if (DEBUG) printf("Audio will record. (%s)\n", audioRecordPath);
+				if (debug_global) printf("Audio will record. (%s)\n", audioRecordPath);
 				*audioRecordSwitch = 1;
 			}else if (insbuf[0]==(char)32){
 				// Stop recording audio
-				if (DEBUG) printf("Audio has stopped recording.\n");
+				if (debug_global) printf("Audio has stopped recording.\n");
 				*audioRecordSwitch = 0;
 			}else if (insbuf[0]==(char)41){
 				// Save state
 				if (stateActionRequest != 0){
-					if (DEBUG) printf("Unable to save state, state being loaded. \n");
+					if (debug_global) printf("Unable to save state, state being loaded. \n");
 					continue;
 				}
 				read(ins_source, insbuf, 1);
@@ -296,7 +296,7 @@ void* ProceedurePipeThreadF(void* pname) {
 			}else if (insbuf[0]==(char)42){
 				// Load state
 				if (stateActionRequest != 0){
-					if (DEBUG) printf("Unable to load state, state being saved. \n");
+					if (debug_global) printf("Unable to load state, state being saved. \n");
 					continue;
 				}
 				read(ins_source, insbuf, 1);
@@ -503,9 +503,9 @@ static void ScanAllPlugins (void) {
 void set_default_plugin(char *plugin_name, char *conf_plugin_name) {
 	if (strlen(plugin_name) != 0) {
 		strcpy(conf_plugin_name, plugin_name);
-		if (DEBUG) printf("Picking default plugin: %s\n", plugin_name);
+		if (debug_global) printf("Picking default plugin: %s\n", plugin_name);
 	} else
-		if (DEBUG) printf("No default plugin could be found for %s\n", conf_plugin_name);
+		if (debug_global) printf("No default plugin could be found for %s\n", conf_plugin_name);
 }
 int main(int argc, char *argv[]) {
 	char file[MAXPATHLEN] = "";
@@ -542,6 +542,7 @@ int main(int argc, char *argv[]) {
 		else if (!strcmp(argv[i], "-gui")) UseGui = TRUE;
 		else if (!strcmp(argv[i], "-psxout")) Config.PsxOut = TRUE;
 		else if (!strcmp(argv[i], "-slowboot")) Config.SlowBoot = TRUE;
+		else if (!strcmp(argv[i], "-debug")) debug_global = TRUE;
 		else if (!strcmp(argv[i], "-load")) loadst = ((argc > i+1) ? atol(argv[++i]) : 0);
 		else if (!strcmp(argv[i], "-loadState")){
 			loadst = -2;
@@ -565,7 +566,7 @@ int main(int argc, char *argv[]) {
 			if (i+1 >= argc) break;
 			strncpy(isofilename, argv[++i], MAXPATHLEN);
 			isofilename[MAXPATHLEN] = '\0';
-			if (DEBUG) printf("Playing %s\n", isofilename);
+			if (debug_global) printf("Playing %s\n", isofilename);
 			SetIsoFile(isofilename);
 			runcd = RUN_CD;
 		}
@@ -576,13 +577,13 @@ int main(int argc, char *argv[]) {
 			strncpy(dispval, argv[++i], 1);
 			dispval[1] = '\0';
 			dispMode = (int) strtol(dispval, (char **)NULL, 10);
-			if (DEBUG) printf("Display mode %i\n", dispMode);
+			if (debug_global) printf("Display mode %i\n", dispMode);
 		}
 		else if (!strcmp(argv[i], "-h") ||
 			 !strcmp(argv[i], "-help") ||
 			 !strcmp(argv[i], "--help")) {
-			 if (DEBUG) printf(PACKAGE_STRING "\n");
-			 if (DEBUG) printf("%s\n", _(
+			 if (debug_global) printf(PACKAGE_STRING "\n");
+			 if (debug_global) printf("%s\n", _(
 							" pcsxr [options] [file]\n"
 							"\toptions:\n"
 							"\t-runcd\t\tRuns CD-ROM\n"
@@ -697,7 +698,7 @@ int main(int argc, char *argv[]) {
 
 		int plugin_code = OpenPlugins(uniquePipeValue, audioRecordSwitch, audioRecordPath, dispMode, &writeStatusNotification);
 		if (plugin_code < 0 || plugins_configured() == FALSE) {
-			if (DEBUG) printf("Failed to open plugins.\n");
+			if (debug_global) printf("Failed to open plugins.\n");
 			if (plugins_configured() == FALSE){
 				printf("Plugins not configured!\n");
 			}else{
@@ -706,7 +707,7 @@ int main(int argc, char *argv[]) {
 			return 1;
 		}
 
-		if (DEBUG) printf("Loaded plugins.\n");
+		if (debug_global) printf("Loaded plugins.\n");
 
 		CheckCdrom();
 
@@ -719,7 +720,7 @@ int main(int argc, char *argv[]) {
 			if (runcd == RUN_CD) {
 				if (LoadCdrom() == -1) {
 					ClosePlugins();
-					if (DEBUG) printf(_("Could not load CD-ROM!\n"));
+					if (debug_global) printf(_("Could not load CD-ROM!\n"));
 					return -1;
 				}
 			}
@@ -738,7 +739,7 @@ int main(int argc, char *argv[]) {
 		}
 
 		if (loadst == -2){
-			if (DEBUG) printf("Loading default state...\n");
+			if (debug_global) printf("Loading default state...\n");
 			LoadState(stateToLoad);
 		}
 
@@ -776,7 +777,7 @@ int SysInit(int* inputHooks, int nHooks, char* uniquePipeValue) {
 #endif
 
 	if (EmuInit(inputHooks, nHooks, uniquePipeValue) == -1) {
-		if (DEBUG) printf(_("PSX emulator couldn't be initialized.\n"));
+		if (debug_global) printf(_("PSX emulator couldn't be initialized.\n"));
 		return -1;
 	}
 
@@ -795,7 +796,7 @@ void SysReset() {
 
 
 void freeMLAdditions(void){
-	if (DEBUG) printf("Freeing ML additions...\n");
+	if (debug_global) printf("Freeing ML additions...\n");
 	free(audioRecordSwitch);
 	free(audioRecordPath);
 }
@@ -821,7 +822,7 @@ void SysPrintf(const char *fmt, ...) {
 		static char linestart = 1;
 		int l = strlen(msg);
 
-		if (DEBUG) printf(linestart ? " * %s" : "%s", msg);
+		if (debug_global) printf(linestart ? " * %s" : "%s", msg);
 
 		if (l > 0 && msg[l - 1] == '\n') {
 			linestart = 1;

@@ -294,9 +294,6 @@ static void UpdateMcdDlg(GtkWidget *widget) {
 }
 
 static void OnMcd_Close(GtkDialog *dialog, gint arg1, gpointer user_data) {
-
-    Config.PerGameMcd = gtk_toggle_button_get_active(
-        GTK_TOGGLE_BUTTON(gtk_builder_get_object(builder, "GtkCheckButton_PerGameMcd")));
 	quit = TRUE;
 	SaveConfig();
 	gtk_widget_destroy(GTK_WIDGET(dialog));
@@ -550,7 +547,7 @@ static void OnMcd_CopyTo(GtkWidget *widget, gpointer user_data) {
 
 	for (j=0; srctbl[j] > 0; j++) {
 		// last parameter specifies link index (next block)
-		CopyMemcardData(source, destination,
+		CopyMemcardData(source, destination, 
 					srctbl[j], dsttbl[j], str, dsttbl[j+1]-1);
 		//printf("count = %i, indices=(%x,%x) jindex=%i\n", count, srctbl[j], dsttbl[j], j);
 	}
@@ -750,9 +747,6 @@ void OnConf_Mcds() {
 	g_signal_connect_data(G_OBJECT(treesel2), "changed",
 						  G_CALLBACK(OnTreeSelectionChanged),
 						  GINT_TO_POINTER(2), NULL, G_CONNECT_AFTER);
-
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(
-        gtk_builder_get_object(builder, "GtkCheckButton_PerGameMcd")), Config.PerGameMcd);
 
 	LoadMcdDlg(dialog);
 

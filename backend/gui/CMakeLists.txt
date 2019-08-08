@@ -26,10 +26,6 @@ find_library(RT_LIB rt REQUIRED)
 find_package(X11 REQUIRED)
 include_directories(${X11_XTest_INCLUDE_PATH})
 
-if (${DYNAREC} STREQUAL "no")
-    message(STATUS "User selected to not build dynarec")
-    add_definitions(-DNOPSXREC)
-endif()
 
 #defs
 add_definitions(-DLOCALE_DIR="${CMAKE_INSTALL_FULL_DATAROOTDIR}/locale/" -DPSEMU_DATA_DIR="${CMAKE_INSTALL_FULL_DATAROOTDIR}/psemu" -DDEF_PLUGIN_DIR="${CMAKE_INSTALL_FULL_LIBDIR}/games/psemu")

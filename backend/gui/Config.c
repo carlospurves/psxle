@@ -32,7 +32,7 @@ static void GetValue(char *src, char *name, char *outvar) {
 	tmp = strstr(src, name);
 	if (tmp == NULL) return;
 
-	tmp += strlen(name); 
+	tmp += strlen(name);
 	while ((*tmp == ' ') || (*tmp == '=')) tmp++;
 
 	while (*tmp != '\n' && *tmp != 0)
@@ -62,16 +62,6 @@ static boolean GetValueb(char *src, char *name) {
 	return FALSE;
 }
 
-static long GetValuef(char *src, char *name) {
-    char *tmp = strstr(src, name);
-    if (tmp != NULL) {
-        tmp += strlen(name);
-        while ((*tmp == ' ') || (*tmp == '=')) tmp++;
-        if (*tmp != '\n') return atof(tmp);
-    }
-    return 0.0f;
-}
-
 #define SetValue(name, var) \
 	fprintf(f, "%s = %s\n", name, var);
 
@@ -80,9 +70,6 @@ static long GetValuef(char *src, char *name) {
 
 #define SetValueb(name, var) \
 	fprintf(f, "%s = %d\n", name, (var) ? 1 : 0);
-
-#define SetValuef(name, var) \
-    fprintf(f, "%s = %f\n", name, var);
 
 int LoadConfig(PcsxConfig *Conf) {
 	struct stat buf;
@@ -94,12 +81,15 @@ int LoadConfig(PcsxConfig *Conf) {
 
 	// Ryan says: use dotdir, dotdir is GOOD
 	// No giant homedir names
-	strncpy(cfgfile, getenv("HOME"), 200);
-	strcat(cfgfile, PCSXR_DOT_DIR);
+
+	if (strcmp(cfgfile_basename, "default.cfg") == 0){
+		strncpy(cfgfile, getenv("HOME"), 200);
+		strcat(cfgfile, PCSXR_DOT_DIR);
+	}
 
 	// proceed to load the cfg file
 	// append its name
-	strcat(cfgfile, cfgfile_basename);
+	strncpy(cfgfile, cfgfile_basename, 200);
 
 	// file is  now ~/.pcsxr/pcsxr.cfg (or whatever cfgfile_basename is)
 	if (stat(cfgfile, &buf) == -1) {
@@ -113,6 +103,7 @@ int LoadConfig(PcsxConfig *Conf) {
 
 	/* TODO Error checking for the next two lines, and at least log failures */
 	f = fopen(cfgfile, "r");
+	printf("Loading from config %s\n", cfgfile);
 	if (f == NULL) return -1;
 
 	data = (char *)malloc(size + 1);
@@ -128,6 +119,7 @@ int LoadConfig(PcsxConfig *Conf) {
 
 	GetValue(data, "Bios", Config.Bios);
 	GetValue(data, "Gpu",  Config.Gpu);
+	printf("GPU: %s\n", Config.Gpu);
 	GetValue(data, "Spu",  Config.Spu);
 	GetValue(data, "Cdr",  Config.Cdr);
 #ifdef ENABLE_SIO1API
@@ -155,20 +147,10 @@ int LoadConfig(PcsxConfig *Conf) {
 	Config.VSyncWA = GetValueb(data, "VSyncWA");
 	Config.NoMemcard = GetValueb(data, "NoMemcard");
 	Config.Widescreen = GetValueb(data, "Widescreen");
-    Config.PerGameMcd = GetValueb(data, "PerGameMcd");
-    Config.MemHack = GetValuel(data, "MemHack");
-    Config.OverClock = GetValueb(data, "OverClock");
 
 	Config.Cpu     = GetValuel(data, "Cpu");
 	Config.PsxType = GetValuel(data, "PsxType");
-    Config.PsxClock = GetValuef(data, "PsxClock");
-
-    Config.PGXP_GTE = GetValueb(data, "PGXP_GTE");
-    Config.PGXP_Cache = GetValueb(data, "PGXP_Cache");
-    Config.PGXP_Texture = GetValueb(data, "PGXP_Texture");
-    Config.PGXP_Mode = GetValuel(data, "PGXP_Mode");
-
-    Config.RewindCount = GetValuel(data, "RewindCount");
+	Config.RewindCount = GetValuel(data, "RewindCount");
 	Config.RewindInterval = GetValuel(data, "RewindInterval");
 
 	Config.AltSpeed1 = GetValuel(data, "AltSpeed1");
@@ -223,26 +205,16 @@ void SaveConfig() {
 	SetValueb("VSyncWA", Config.VSyncWA);
 	SetValueb("NoMemcard", Config.NoMemcard);
 	SetValueb("Widescreen", Config.Widescreen);
-    SetValueb("PerGameMcd", Config.PerGameMcd);
-    SetValuel("MemHack", (long)Config.MemHack);
-    SetValueb("OverClock", Config.OverClock);
 
-	SetValuel("Cpu",     (long)Config.Cpu);
-    SetValuel("PsxType", (long)Config.PsxType);
-    SetValuef("PsxClock", Config.PsxClock);
+	SetValuel("Cpu",     Config.Cpu);
+	SetValuel("PsxType", Config.PsxType);
+	SetValuel("RewindCount", Config.RewindCount);
+	SetValuel("RewindInterval", Config.RewindInterval);
 
-    SetValueb("PGXP_GTE", Config.PGXP_GTE);
-    SetValueb("PGXP_Cache", Config.PGXP_Cache);
-    SetValueb("PGXP_Texture", Config.PGXP_Texture);
-    SetValuel("PGXP_Mode", (long)Config.PGXP_Mode);
+	SetValuel("AltSpeed1", Config.AltSpeed1);
+	SetValuel("AltSpeed2", Config.AltSpeed2);
 
-    SetValuel("RewindCount", (long)Config.RewindCount);
-    SetValuel("RewindInterval", (long)Config.RewindInterval);
-
-    SetValuel("AltSpeed1", (long)Config.AltSpeed1);
-    SetValuel("AltSpeed2", (long)Config.AltSpeed2);
-
-    SetValuel("HackFix", (long)Config.HackFix);
+	SetValuel("HackFix", Config.HackFix);
 
 	fclose(f);
 }

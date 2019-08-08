@@ -10,13 +10,6 @@ if(NOT GLib_FOUND)
 endif(NOT GLib_FOUND)
 include_directories(${GLib_INCLUDE_DIRS})
 
-find_package(GLEW REQUIRED)
-include_directories(${GLEW_INCLUDE_DIRS})
-
-
-
-
-
 find_package(GTK3 REQUIRED)
 if(NOT GTK3_FOUND)
     message(FATAL_ERROR "GTK3 library not found")

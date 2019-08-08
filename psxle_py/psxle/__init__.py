@@ -45,7 +45,7 @@ class Console:
     def parseInt(self,b):
         return int.from_bytes(b, byteorder='little')
 
-    def __init__(self, iso, start=None, gui=False, display=Display.NORMAL, debug=False):
+    def __init__(self, iso=None, start=None, gui=False, display=Display.NORMAL, debug=False):
         self.debug = debug
         self.control = False
         self.running = False
@@ -247,22 +247,22 @@ class Console:
             args = ["xvfb-run", "-a", "-s", "-screen 0 1400x900x24"]
         elif self.display == Display.NONE:
             args = ["xvfb-run", "-a", "-s", "-screen 0 1400x900x24"]
-        else:
-            args = []
-        args.append(self.CONFIGHOME+"/pcsxr")
-        print(args)
-        matchingGames = []
+
+        if self.debug:
+            args.append("-debug")
+
+        args.append(self.CONFIGHOME+"/psxle")
         args.append("-cfg")
         args.append(self.CONFIGHOME+"/default.cfg")
 
-        if self.gui:
+        if self.gui or self.playing is None:
 
             args.append("-gui")
 
             args.append("-controlPipe")
             args.append("none")
 
-        elif len(matchingGames) > 0:
+        elif os.path.isfile(os.path.expanduser(self.playing)):
 
             args.append("-display")
             args.append(str(self.display))
@@ -281,12 +281,9 @@ class Console:
                 if os.path.exists(playstatepath):
                     args.append("-loadState")
                     args.append(playstatepath)
-            if os.path.isfile(os.path.expanduser(self.playing)):
-                args.append("-play")
-                args.append(os.path.expanduser(self.playing))
-                self.debugPrint("Playing %s from ISO."%matchingGames[0][0])
-            else:
-                self.debugPrint("Game ISO for %s not installed or is corrupted."%matchingGames[0][0])
+            args.append("-play")
+            args.append(os.path.expanduser(self.playing))
+            self.debugPrint("Playing {}".format(os.path.expanduser(self.playing)))
 
         else:
             print("No Execution specified.")
@@ -303,6 +300,7 @@ class Console:
 
         self.listenerFile.seek(0)
         if self.debug:
+            print("Arguments: ", args)
             sub = subprocess.Popen(args, stdin=self.listenerFile)
         else:
             sub = subprocess.Popen(args, stdin=self.listenerFile, stdout=subprocess.PIPE)
