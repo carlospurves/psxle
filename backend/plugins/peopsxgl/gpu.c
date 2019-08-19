@@ -727,21 +727,6 @@ void sysdep_create_display(void)                       // create display
 
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 typedef GLXContext (*glXCreateContextAttribsARBProc)(Display*, GLXFBConfig, GLXContext, Bool, const int*);
 typedef Bool (*glXMakeContextCurrentARBProc)(Display*, GLXDrawable, GLXDrawable, GLXContext);
 static glXCreateContextAttribsARBProc glXCreateContextAttribsARB = NULL;
