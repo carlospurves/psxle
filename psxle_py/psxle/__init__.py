@@ -14,11 +14,6 @@ import tempfile
 import struct
 from PIL import Image
 
-HOMEOVERRIDE = None #"/local/scratch/cp614/.psxpy"
-
-def interact():
-    import code
-    code.InteractiveConsole(locals=globals()).interact()
 
 class Display:
     NONE = 2
@@ -88,7 +83,6 @@ class Console:
 
     def flushAndAwait(self, cond, pipe):
         rec = self.status[cond]
-        #print("Flushing...")
         pipe.flush()
         return self.awaitNotification(cond, start=rec)
 
@@ -162,7 +156,7 @@ class Console:
         self.memoryInterest = []
 
     def createHomeConfig(self):
-        self.CONFIGHOME = os.path.expanduser("~/.psxle") if not HOMEOVERRIDE else HOMEOVERRIDE
+        self.CONFIGHOME = os.path.expanduser("~/.psxle")
         if not os.path.exists(self.CONFIGHOME):
             os.mkdir(self.CONFIGHOME)
             os.mkdir(self.CONFIGHOME+"/isos")
@@ -263,9 +257,9 @@ class Console:
             args.append("-gui")
             args.append("-controlPipe")
             args.append("none")
-        elif self.playing is not None:
+        else:
             args.append("-display")
-            args.append(str(self.display))# if self.display != Display.FAST else Display.NORMAL))
+            args.append(str(self.display))
             args.append("-controlPipe")
             pipeName = "{}/ml_psxemu{}".format(os.environ['TMPDIR'] if 'TMPDIR' in os.environ else "/tmp",self.unique)
             controlPipeName = pipeName+"-joy"
@@ -303,7 +297,7 @@ class Console:
         if self.debug:
             sub = subprocess.Popen(args, stdin=self.listenerFile)
         else:
-            sub = subprocess.Popen(args, stdin=self.listenerFile)#, stdout=subprocess.PIPE)
+            sub = subprocess.Popen(args, stdin=self.listenerFile, stdout=subprocess.PIPE)
 
         self.proc = sub
         self.pid = sub.pid
@@ -454,12 +448,10 @@ class Console:
         if not self.running:
             print("Not running - memory can only be accessed from running consoles.")
             return None
-        #print("M:", start)
         self.procControlPipe.write(bytes([21]))
         self.procControlPipe.write((start).to_bytes(4, byteorder='big'))
         self.procControlPipe.write((length).to_bytes(4, byteorder='big'))
         self.procControlPipe.write(bytes([(self.unique+5)*2+1]))
-        #print("Writen:", start)
 
         if not self.flushAndAwait(11, self.procControlPipe):
             print("Shared memory timeout..")
@@ -619,9 +611,6 @@ class IPCThread (threading.Thread):
     def stop(self):
         self.owner.debugPrint("Stopping memory speaker...")
         self.killed = True
-
-# Testing with:
-# x.registerMemoryInterest([((700526,700527),lambda was,now: print("Changed:",int.from_bytes(was,'big'),"->",int.from_bytes(now,'big')))])
 
 
 if __name__ == '__main__':
