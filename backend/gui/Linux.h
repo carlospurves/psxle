@@ -26,16 +26,16 @@
 
 #include "Cheat.h"
 
-#define DEFAULT_MEM_CARD_1 "/.psxpy/memcards/card1.mcd"
-#define DEFAULT_MEM_CARD_2 "/.psxpy/memcards/card2.mcd"
-#define MEMCARD_DIR "/.psxpy/memcards/"
-#define PLUGINS_DIR "/.psxpy/plugins/"
-#define PLUGINS_CFG_DIR "/.psxpy/plugins/cfg/"
-#define PCSXR_DOT_DIR "/.psxpy/"
-#define BIOS_DIR "/.psxpy/bios/"
-#define STATES_DIR "/.psxpy/sstates/"
-#define CHEATS_DIR "/.psxpy/cheats/"
-#define PATCHES_DIR "/.psxpy/patches/"
+#define DEFAULT_MEM_CARD_1 "/.psxle/memcards/card1.mcd"
+#define DEFAULT_MEM_CARD_2 "/.psxle/memcards/card2.mcd"
+#define MEMCARD_DIR "/.psxle/memcards/"
+#define PLUGINS_DIR "/.psxle/plugins/"
+#define PLUGINS_CFG_DIR "/.psxle/plugins/cfg/"
+#define PCSXR_DOT_DIR "/.psxle/"
+#define BIOS_DIR "/.psxle/bios/"
+#define STATES_DIR "/.psxle/sstates/"
+#define CHEATS_DIR "/.psxle/cheats/"
+#define PATCHES_DIR "/.psxle/patches/"
 
 #define OLD_SLOT 1000
 #define NUM_OLD_SLOTS 2
