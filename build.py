@@ -45,12 +45,14 @@ print("""Build Note:
        - SDL 2
        - GLIB 2
        - GTK 3
+       - xvfb
        - cmake
     If you do not have them, they can be installed using:
-         sudo apt-get install libsdl2-dev
-         sudo apt-get install libglib2.0-dev
-         sudo apt-get install libgtk-3-dev
-         sudo apt-get install cmake
+         sudo apt install libsdl2-dev
+         sudo apt install libglib2.0-dev
+         sudo apt install libgtk-3-dev
+         sudo apt install xvfb
+         sudo apt install cmake
 
     After building, PSXLE can be installed by running:
         python install.py
