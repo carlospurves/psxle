@@ -15,6 +15,21 @@ import struct
 from PIL import Image
 
 
+class SharedPSXCallbackManager():
+    def __init__(self):
+        self.arrival_times = {}
+
+    def get_last(self, cond):
+        return self.arrival_times.get(cond, 0)
+    
+    def unchanged(self, cond, value):
+        return self.get_last(cond) <= value
+
+    def update(self, cond, value):
+        self.arrival_times[cond] = value
+    
+
+
 class Display:
     NONE = 2
     FAST = 0
@@ -34,15 +49,20 @@ class Control:
 class Console:
     count = 0
     sharedMemoryTimeout = 3
+    cfg_path = os.path.expanduser("~/.psxle")
 
     lastInstance = None
 
-    def debugPrint(self, *arg):
+    @staticmethod
+    def int32(b):
+        return int.from_bytes(b, byteorder='little')
+
+    def log(self, *arg):
         if self.debug:
             print(arg)
 
-    def parseInt(self,b):
-        return int.from_bytes(b, byteorder='little')
+    def error(self, *args):
+        print(*args, file=sys.stderr)
 
     def __init__(self, playing, start=None, gui=False, display=Display.NORMAL, debug=False):
         self.debug = debug
@@ -53,53 +73,60 @@ class Console:
         self.unique = Console.count
         Console.lastInstance = self
         Console.count += 1
-        self.pid = None
-        self.memoryInterest = []
-        self.memoryScanRange = None
-        self.listenerFile = None
+
+        self._memory_listener_list = []
+        self._memory_listener_coverage = None
+        self._memory_listeners = None
+        
         self.paused = False
         self.display = display
-        self.isRecordingAudio = False
-        self.isListeningToAudio = False
+
+        self._fps = 100
+
+        self.is_recording_audio = False
+        
         self.recordingFile = None
-        self.StateLoadCB = None
-        self.StateSaveCB = None
-        self.AudioFinishedRecordingCB = None
-        self.playState = start
-        self.status = [0 for _ in range(13)]
+        self.game_state = start
+        self.cb_handler = SharedPSXCallbackManager()
         self.statusMethods = {}
-        self.createHomeConfig()
         self.sharedCommMemory = None
 
-    def awaitNotification(self,cond, timeout=10, start=None):
-        timestart = time.time()
-        timeend = timestart + timeout
-        rec = self.status[cond] if start is None else start
-        while rec >= self.status[cond] and time.time() < timeend:
+        # Callbacks:
+        self._on_state_load = None
+        self._on_state_save = None
+        self._on_audio_finish_record = None
+
+    def await_cb_notification(self,cond, timeout=10, start=None):
+        start_time = time.time()
+        max_time = start_time + timeout
+        rec = self.cb_handler.get_last(cond) if start is None else start
+        # While we haven't seen changes to the timestamp of the condition
+        while self.cb_handler.unchanged(cond, rec) and time.time() < max_time:
+            # Wait for 0.1 seconds
             time.sleep(0.1)
-        if time.time() - timestart > 5:
-            print("\n\n\nWARNING!!!! ", time.time()-timestart, "s    waiting for", cond," \n\n\n")
-        return rec < self.status[cond]
+        if self.cb_handler.unchanged(cond, rec):
+            self.error("Failed while waiting for {} (took: {})".format(int(time.time())-start_time))
+        return not self.cb_handler.unchanged(cond, rec)
 
-    def flushAndAwait(self, cond, pipe):
-        rec = self.status[cond]
+    def flush_then_wait(self, cond, pipe):
+        rec = self.cb_handler.get_last(cond)
         pipe.flush()
-        return self.awaitNotification(cond, start=rec)
+        return self.await_cb_notification(cond, start=rec)
 
 
-    def attachControlPipe(self,pipename):
+    def attach_control_pipe(self,pipename):
         try:
             os.mkfifo(pipename)
         except OSError as oe:
             if oe.errno != errno.EEXIST:
                 raise
 
-        self.debugPrint("Attatching Control Pipe %s ..."%pipename)
+        self.log("Attatching Control Pipe %s ..."%pipename)
         pipe = open(pipename, "wb")
-        self.debugPrint("Control Pipe %s successfully attatched..."%pipename)
+        self.log("Control Pipe %s successfully attatched..."%pipename)
         return pipe
 
-    def attachCBPipe(self, pipename, timeout=10):
+    def attach_cb_pipe(self, pipename, timeout=10):
         timelimit = time.time() + timeout
         pipefound = False
         while time.time() < timelimit:
@@ -107,97 +134,87 @@ class Console:
                 pipefound = True
                 break
         if not pipefound:
-            self.debugPrint("Callback Pipe attach timeout: %s ..."%pipename)
+            self.log("Callback Pipe attach timeout: %s ..."%pipename)
             return None
-        self.debugPrint("Attatching Callback Pipe %s ..."%pipename)
+        self.log("Attatching Callback Pipe %s ..."%pipename)
         pipe = open(pipename, "rb")
-        self.debugPrint("Callback Pipe %s successfully attatched..."%pipename)
+        self.log("Callback Pipe %s successfully attatched..."%pipename)
         return pipe
 
-    def registerMemoryInterest(self, interest):
+    def register_memory_interest(self, interest):
         interest.sort(key=lambda x: x[0][0])
-        self.memoryInterest = interest
+        self._memory_listener_list = interest
         startrange = interest[0][0][0]
         endranges = [x[0][1] for x in interest]
         endrange = max(endranges)
-        self.memoryScanRange = (startrange, endrange)
+        self._memory_listener_coverage = (startrange, endrange)
 
-    def addMemoryListener(self, start, lgth, onChange, silenceByDefault=False, newValuesOnly=True, allowBuffer=True):
+    def add_memory_listener(self, start, lgth, onChange, silenceByDefault=False, newValuesOnly=True, allowBuffer=True):
         if self.running:
             print("Must register memory listeners before running an instance.")
             return
-        key = len(self.memoryInterest)
-        self.memoryInterest.append((key,start,lgth,onChange,silenceByDefault,newValuesOnly,allowBuffer))
+        key = len(self._memory_listener_list)
+        self._memory_listener_list.append((key,start,lgth,onChange,silenceByDefault,newValuesOnly,allowBuffer))
         return key
 
-    def sleepMemoryListener(self, tarkey):
+    def sleep_memory_listener(self, tarkey):
         if self.running:
-            self.procControlPipe.write(bytes([24]))
-            self.procControlPipe.write(bytes([tarkey]))
-            self.procControlPipe.flush()
-        for i in range(len(self.memoryInterest)):
-            if self.memoryInterest[i][0] == tarkey:
-                self.memoryInterest[i][4] == True
+            self.proc_pipe.write(bytes([24]))
+            self.proc_pipe.write(bytes([tarkey]))
+            self.proc_pipe.flush()
+        for i in range(len(self._memory_listener_list)):
+            if self._memory_listener_list[i][0] == tarkey:
+                self._memory_listener_list[i][4] == True
 
-
-    def wakeMemoryListener(self, tarkey):
+    def wake_memory_listener(self, tarkey):
         if self.running:
-            self.procControlPipe.write(bytes([25]))
-            self.procControlPipe.write(bytes([tarkey]))
-            self.procControlPipe.flush()
-        for i in range(len(self.memoryInterest)):
-            if self.memoryInterest[i][0] == tarkey:
-                self.memoryInterest[i][4] == False
+            self.proc_pipe.write(bytes([25]))
+            self.proc_pipe.write(bytes([tarkey]))
+            self.proc_pipe.flush()
+        for i in range(len(self._memory_listener_list)):
+            if self._memory_listener_list[i][0] == tarkey:
+                self._memory_listener_list[i][4] == False
 
-    def setCallbackReceiver(self, i, fn):
-        statusMethods[i] = fn
+    def clear_memory_listeners(self):
+        self._memory_listener_list = []
 
-    def clearMemoryListeners(self):
-        self.memoryInterest = []
+    def get_state_path(self, name):
+        states_path = os.path.join(Console.cfg_path, "states", os.path.basename(self.playing))
+        if not os.path.isdir(states_path):
+            os.mkdir(states_path)
+        state_name = "{}.state".format(name)
+        return os.path.join(states_path, state_name)
 
-    def createHomeConfig(self):
-        self.CONFIGHOME = os.path.expanduser("~/.psxle")
-        if not os.path.exists(self.CONFIGHOME):
-            os.mkdir(self.CONFIGHOME)
-            os.mkdir(self.CONFIGHOME+"/isos")
-        if not os.path.exists(self.CONFIGHOME+"/states"):
-            os.mkdir(self.CONFIGHOME+"/states")
-
-    def getStateName(self, name):
-        if not os.path.exists(self.CONFIGHOME+"/states/"+self.playing):
-            os.mkdir(self.CONFIGHOME+"/states/"+self.playing)
-        return self.CONFIGHOME+"/states/"+self.playing+"/"+name+".state"
-
-    def saveState(self, name, callback=None):
+    def save_game_state(self, name, callback=None):
         if not self.running:
             return False
         if not name.isalnum():
             return False
         if self.paused:
             self.resume(block=True)
-        path = self.getStateName(name)
-        self.onStateSave(callback)
-        self.procControlPipe.write(bytes([41, len(path)]))
-        self.procControlPipe.write(path.encode("ascii"))
-        self.procControlPipe.flush()
+        path = self.get_state_path(name)
+        self.on_state_save(callback)
+        self.proc_pipe.write(bytes([41, len(path)]))
+        self.proc_pipe.write(path.encode("ascii"))
+        self.proc_pipe.flush()
 
-    def loadState(self, name, callback=None, block=False):
+    def load_game_state(self, name, callback=None, block=False):
         if not name.isalnum():
             return False
-        self.playState = name
+        self.game_state = name
         if self.running:
             if self.paused:
                 self.resume(block=True)
-            path = self.getStateName(name)
+            path = self.get_state_path(name)
             if not os.path.exists(path):
                 return False
-            self.onStateLoad(callback)
-            self.procControlPipe.write(bytes([42, len(path)]))
-            self.procControlPipe.write(path.encode("ascii"))
+            self.on_state_load(callback)
+            self.proc_pipe.write(bytes([42, len(path)]))
+            self.proc_pipe.write(path.encode("ascii"))
             if block:
-                return self.flushAndAwait(2, self.procControlPipe)
+                return self.flush_then_wait(2, self.proc_pipe)
             else:
-                self.procControlPipe.flush()
+                self.proc_pipe.flush()
                 return True
 
 
@@ -205,38 +222,39 @@ class Console:
         if self.running:
             if self.paused:
                 return True
-            self.debugPrint("Pausing...")
-            self.procControlPipe.write(bytes([2]))
+            self.log("Pausing...")
+            self.proc_pipe.write(bytes([2]))
             if block:
-                success = self.flushAndAwait(7, self.procControlPipe)
+                success = self.flush_then_wait(7, self.proc_pipe)
                 self.paused = success
                 if not success:
-                    self.debugPrint("Failed to pause!")
+                    self.log("Failed to pause!")
                 return success
             else:
                 self.paused = True
-                self.procControlPipe.flush()
+                self.proc_pipe.flush()
                 return True
         else:
             print("Cannot pause emulator that is not running.")
 
     def resume(self, block=False):
-        if self.running:
-            if not self.paused:
-                return True
-            self.procControlPipe.write(bytes([3]))
-            self.debugPrint("Resuming...")
+        if not self.running:
+            return
+        if not self.paused:
+            return True
+        self.proc_pipe.write(bytes([3]))
+        self.log("Resuming...")
 
-            if block:
-                success = self.flushAndAwait(8, self.procControlPipe)
-                self.paused = not success
-                if not success:
-                    self.debugPrint("Failed to resume!")
-                return success
-            else:
-                self.procControlPipe.flush()
-                self.paused = False
-                return True
+        if block:
+            success = self.flush_then_wait(8, self.proc_pipe)
+            self.paused = not success
+            if not success:
+                self.log("Failed to resume!")
+            return success
+        else:
+            self.proc_pipe.flush()
+            self.paused = False
+            return True
 
     def run(self):
         if self.running:
@@ -248,10 +266,10 @@ class Console:
             args = ["xvfb-run", "-a", "-s", "-screen 0 1400x900x24"]
         else:
             args = []
-        args.append(self.CONFIGHOME+"/psxle")
+        args.append(Console.cfg_path+"/psxle")
         print(args)
         args.append("-cfg")
-        args.append(self.CONFIGHOME+"/default.cfg")
+        args.append(Console.cfg_path+"/default.cfg")
 
         if self.gui:
             args.append("-gui")
@@ -267,44 +285,39 @@ class Console:
             memPipeName = pipeName+"-mem"
             args.append(pipeName)
             args.append("-nMemoryListeners")
-            args.append(str(len(self.memoryInterest)))
-            if self.playState:
-                playstatepath = self.getStateName(self.playState)
+            args.append(str(len(self._memory_listener_list)))
+            if self.game_state:
+                playstatepath = self.get_state_path(self.game_state)
                 if os.path.exists(playstatepath):
                     args.append("-loadState")
                     args.append(playstatepath)
             if os.path.isfile(self.playing):
                 args.append("-play")
                 args.append(self.playing)
-                self.debugPrint("Playing ISO: {}".format(self.playing))
+                self.log("Playing ISO: {}".format(self.playing))
             else:
-                self.debugPrint("The game ISO '{}' is not available.".format(self.playing))
+                self.log("The game ISO '{}' is not available.".format(self.playing))
 
-        else:
-            print("No Execution specified.")
-            return
+        self._memory_listeners = tempfile.NamedTemporaryFile()
 
-        self.listenerFile = tempfile.NamedTemporaryFile()
-
-        for k in self.memoryInterest:
+        for k in self._memory_listener_list:
             keyout = (0b10000000 if k[4] else 0) | k[0]
-            self.debugPrint("Sending",keyout)
-            self.listenerFile.write(k[1].to_bytes(4, byteorder=sys.byteorder))
-            self.listenerFile.write(k[2].to_bytes(4, byteorder=sys.byteorder))
-            self.listenerFile.write(bytes([keyout,1 if k[5] else 0,1 if k[6] else 0,0]))
+            self.log("Sending",keyout)
+            self._memory_listeners.write(k[1].to_bytes(4, byteorder=sys.byteorder))
+            self._memory_listeners.write(k[2].to_bytes(4, byteorder=sys.byteorder))
+            self._memory_listeners.write(bytes([keyout,1 if k[5] else 0,1 if k[6] else 0,0]))
 
-        self.listenerFile.seek(0)
+        self._memory_listeners.seek(0)
         if self.debug:
-            sub = subprocess.Popen(args, stdin=self.listenerFile)
+            sub = subprocess.Popen(args, stdin=self._memory_listeners)
         else:
-            sub = subprocess.Popen(args, stdin=self.listenerFile, stdout=subprocess.PIPE)
+            sub = subprocess.Popen(args, stdin=self._memory_listeners, stdout=subprocess.PIPE)
 
         self.proc = sub
-        self.pid = sub.pid
         self.running = True
-        self.memCallbackPipe = self.attachCBPipe(memPipeName)
-        self.joyControlPipe = self.attachControlPipe(controlPipeName)
-        self.procControlPipe = self.attachControlPipe(proceedurePipeName)
+        self.memory_cb_pipe = self.attach_cb_pipe(memPipeName)
+        self.control_emu_pipe = self.attach_control_pipe(controlPipeName)
+        self.proc_pipe = self.attach_control_pipe(proceedurePipeName)
         self.reversePipeThread = IPCThread(self)
         self.reversePipeThread.start()
         self.control = True
@@ -324,8 +337,8 @@ class Console:
             print("Error, control function out of range (%i, %i)."%(button,controller))
             return
         package = (controller << 6 | button) | 32
-        self.joyControlPipe.write(bytes([package]))
-        self.joyControlPipe.flush()
+        self.control_emu_pipe.write(bytes([package]))
+        self.control_emu_pipe.flush()
 
     def addFixedControlSpacer(self, delay):
         # DELAY IS IN UNITS OF ms
@@ -341,8 +354,8 @@ class Console:
             return
         delay = int(delay/10)
         package = delay | 128
-        self.joyControlPipe.write(bytes([package]))
-        self.joyControlPipe.flush()
+        self.control_emu_pipe.write(bytes([package]))
+        self.control_emu_pipe.flush()
 
 
     def releaseButton(self, button, controller=0):
@@ -354,8 +367,8 @@ class Console:
             print("Error, control function out of range (%i, %i)."%(button,controller))
             return
         package = (controller << 6 | button)
-        self.joyControlPipe.write(bytes([package]))
-        self.joyControlPipe.flush()
+        self.control_emu_pipe.write(bytes([package]))
+        self.control_emu_pipe.flush()
 
     def touchButton(self, button, controller=0, sleepfor=0.2):
         self.holdButton(button, controller)
@@ -363,23 +376,29 @@ class Console:
         self.releaseButton(button, controller)
 
 
-    def onStateLoad(self, f):
-        self.StateLoadCB = f
-    def onStateSave(self, f):
-        self.StateSaveCB = f
-    def onAudioFinishedRecording(self, f):
-        self.AudioFinishedRecordingCB = f
+    def on_state_load(self, f):
+        self._on_state_load = f
+    def on_state_save(self, f):
+        self._on_state_save = f
+    def on_audio_recording_stopped(self, f):
+        self._on_audio_finish_record = f
 
-    def setSpeed(self, val, block=False):
+    @property
+    def fps(self):
+        return self._fps
+
+    @fps.setter
+    def fps(self, val, block=False):
+        self._fps = val
         if not self.running:
             print("Not running - speed can only be set for running consoles.")
             return None
-        self.procControlPipe.write(bytes([43]))
-        self.procControlPipe.write((val).to_bytes(4, byteorder='big'))
+        self.proc_pipe.write(bytes([43]))
+        self.proc_pipe.write((val).to_bytes(4, byteorder='big'))
         if block:
-            return self.flushAndAwait(10, self.procControlPipe)
+            return self.flush_then_wait(10, self.proc_pipe)
         else:
-            self.procControlPipe.flush()
+            self.proc_pipe.flush()
             return True
 
     def exit(self):
@@ -387,37 +406,36 @@ class Console:
             if self.paused:
                 self.resume(block=True)
             self.cleanSharedMemory()
-            self.procControlPipe.write(bytes([1]))
-            self.procControlPipe.flush()
+            self.proc_pipe.write(bytes([1]))
+            self.proc_pipe.flush()
             self.reversePipeThread.stop()
             self.reversePipeThread.join()
-            self.memCallbackPipe.close()
-            self.procControlPipe.close()
-            self.joyControlPipe.close()
-            if self.listenerFile:
-                self.listenerFile.close()
+            self.memory_cb_pipe.close()
+            self.proc_pipe.close()
+            self.control_emu_pipe.close()
+            if self._memory_listeners:
+                self._memory_listeners.close()
             self.running = False
 
     def startAudioRecording(self):
-        if self.isRecordingAudio:
+        if self.is_recording_audio:
             print("Audio already recording.")
             return False
-        self.debugPrint("Recoding audio...")
+        self.log("Recoding audio...")
         self.recordingFile = tempfile.NamedTemporaryFile()
         path = self.recordingFile.name
-        self.procControlPipe.write(bytes([31, len(path)]))
-        self.procControlPipe.write(path.encode("ascii"))
-        self.procControlPipe.flush()
-        self.isRecordingAudio = True
-        self.isListeningToAudio = True
+        self.proc_pipe.write(bytes([31, len(path)]))
+        self.proc_pipe.write(path.encode("ascii"))
+        self.proc_pipe.flush()
+        self.is_recording_audio = True
         return True
 
     def stopAudioRecording(self, discard=False):
-        if not self.isRecordingAudio:
+        if not self.is_recording_audio:
             print("No audio recording.")
             return None
-        self.procControlPipe.write(bytes([32]))
-        self.procControlPipe.flush()
+        self.proc_pipe.write(bytes([32]))
+        self.proc_pipe.flush()
         out_ints = []
         if not discard:
             print("Audio conversion taking place...")
@@ -430,8 +448,7 @@ class Console:
                     out_ints.append(val)
         self.recordingFile.close()
         print("Audio conversion done.")
-        self.isRecordingAudio = False
-        self.isListeningToAudio = False
+        self.is_recording_audio = False
         if len(out_ints) > 0:
             i = len(out_ints)-1
             while out_ints[i][0] == 0 and i > 0:
@@ -441,19 +458,19 @@ class Console:
             return None
 
     def cleanSharedMemory(self):
-        self.procControlPipe.write(bytes([12,23]))
-        self.procControlPipe.flush()
+        self.proc_pipe.write(bytes([12,23]))
+        self.proc_pipe.flush()
 
     def readMemory(self, start, length):
         if not self.running:
             print("Not running - memory can only be accessed from running consoles.")
             return None
-        self.procControlPipe.write(bytes([21]))
-        self.procControlPipe.write((start).to_bytes(4, byteorder='big'))
-        self.procControlPipe.write((length).to_bytes(4, byteorder='big'))
-        self.procControlPipe.write(bytes([(self.unique+5)*2+1]))
+        self.proc_pipe.write(bytes([21]))
+        self.proc_pipe.write((start).to_bytes(4, byteorder='big'))
+        self.proc_pipe.write((length).to_bytes(4, byteorder='big'))
+        self.proc_pipe.write(bytes([(self.unique+5)*2+1]))
 
-        if not self.flushAndAwait(11, self.procControlPipe):
+        if not self.flush_then_wait(11, self.proc_pipe):
             print("Shared memory timeout..")
             return None
 
@@ -487,15 +504,15 @@ class Console:
         if not self.running:
             print("Not running - memory can only be accessed from running consoles.")
             return None
-        self.procControlPipe.write(bytes([22]))
-        self.procControlPipe.write((start).to_bytes(4, byteorder='big'))
-        self.procControlPipe.write((length).to_bytes(4, byteorder='big'))
-        self.procControlPipe.write(bytes([len(path)]))
-        self.procControlPipe.write(path.encode("ascii"))
+        self.proc_pipe.write(bytes([22]))
+        self.proc_pipe.write((start).to_bytes(4, byteorder='big'))
+        self.proc_pipe.write((length).to_bytes(4, byteorder='big'))
+        self.proc_pipe.write(bytes([len(path)]))
+        self.proc_pipe.write(path.encode("ascii"))
         if block:
-            return self.flushAndAwait(4, self.procControlPipe)
+            return self.flush_then_wait(4, self.proc_pipe)
         else:
-            self.procControlPipe.flush()
+            self.proc_pipe.flush()
             return True
 
 
@@ -503,33 +520,19 @@ class Console:
         if not self.running:
             print("Not running - memory can only be written from running consoles.")
             return None
-        self.procControlPipe.write(bytes([26]))
-        self.procControlPipe.write((start).to_bytes(4, byteorder='big'))
-        self.procControlPipe.write(bytes([val]))
+        self.proc_pipe.write(bytes([26]))
+        self.proc_pipe.write((start).to_bytes(4, byteorder='big'))
+        self.proc_pipe.write(bytes([val]))
         if block:
-            return self.flushAndAwait(5, self.procControlPipe)
+            return self.flush_then_wait(5, self.proc_pipe)
         else:
-            self.procControlPipe.flush()
-            return True
-
-
-    def drill(self, start, val, times, block=True):
-        if not self.running:
-            print("Not running - memory can only be drilled from running consoles.")
-            return None
-        self.procControlPipe.write(bytes([27]))
-        self.procControlPipe.write((start).to_bytes(4, byteorder='big'))
-        self.procControlPipe.write(bytes([val,times]))
-        if block:
-            return self.flushAndAwait(6, self.procControlPipe)
-        else:
-            self.procControlPipe.flush()
+            self.proc_pipe.flush()
             return True
 
     def snapshot(self):
-        self.procControlPipe.write(bytes([11]))
-        self.procControlPipe.write(bytes([(self.unique+5)*2]))
-        self.procControlPipe.flush()
+        self.proc_pipe.write(bytes([11]))
+        self.proc_pipe.write(bytes([(self.unique+5)*2]))
+        self.proc_pipe.flush()
 
         startTime = time.time()
         while True:
@@ -539,10 +542,10 @@ class Console:
                 if time.time()-startTime < Console.sharedMemoryTimeout:
                     continue
                 else:
-                    self.debugPrint("Shared memory timeout!")
+                    self.log("Shared memory timeout!")
                     return self.snapshot()
             except Exception as ex:
-                self.debugPrint("Shared memory error ",type(ex))
+                self.log("Shared memory error ",type(ex))
                 return
             break
 
@@ -556,7 +559,7 @@ class Console:
                 screen_data[479-int(i/640), i%640, 2] = rgb[2]
         return screen_data
 
-    def snapshotToFile(self, path):
+    def snapshot_to_file(self, path):
         data = self.snapshot()
         img = Image.fromarray(data, 'RGB')
         img.save(path)
@@ -568,9 +571,10 @@ class IPCThread (threading.Thread):
         threading.Thread.__init__(self)
         self.killed = False
     def run(self):
+        self.owner.log("Started memory callback listener...")
         while not self.killed:
             try:
-                next = self.owner.memCallbackPipe.read(1)
+                next = self.owner.memory_cb_pipe.read(1)
             except Exception as e:
                 if e is ValueError:
                     break
@@ -579,21 +583,21 @@ class IPCThread (threading.Thread):
             if len(next) == 0:
                 continue
             if next[0] != 0:
-                self.owner.debugPrint(("Received notif ", next[0]))
-                self.owner.status[next[0]] = time.time()
+                self.owner.log("Received notification with id: {}".format(next[0]))
+                self.owner.cb_handler.update(next[0])
                 if next[0] == 2:
-                    if self.owner.StateLoadCB:
-                        self.owner.StateLoadCB()
+                    if self.owner._on_state_load:
+                        self.owner._on_state_load()
                 elif next[0] == 3:
-                    if self.owner.StateSaveCB:
-                        self.owner.StateSaveCB()
+                    if self.owner._on_state_save:
+                        self.owner._on_state_save()
                 elif next[0] == 9:
-                    self.owner.isListeningToAudio = False
-                    if self.owner.AudioFinishedRecordingCB:
-                        self.owner.AudioFinishedRecordingCB()
-
+                    self.owner.is_recording_audio = False
+                    if self.owner._on_audio_finish_record:
+                        self.owner._on_audio_finish_record()
                 continue
-            key = self.owner.memCallbackPipe.read(1)[0]
+
+            key = self.owner.memory_cb_pipe.read(1)[0]
             profile = None
             memoryvalue = None
             for g in self.owner.memoryInterest:
@@ -603,19 +607,19 @@ class IPCThread (threading.Thread):
             if profile is None:
                 continue
             bytecount = profile[2]
-            memoryvalue = self.owner.memCallbackPipe.read(bytecount)
+            memoryvalue = self.owner.memory_cb_pipe.read(bytecount)
             profile[3](memoryvalue)
 
-        self.owner.debugPrint("Stopped memory speaker.")
+        self.owner.log("Stopped memory speaker.")
 
     def stop(self):
-        self.owner.debugPrint("Stopping memory speaker...")
+        self.owner.log("Stopping memory speaker...")
         self.killed = True
 
 
 if __name__ == '__main__':
     x = Console("kula")
-    x.addMemoryListener(671364, 4, lambda x: print(x))
+    x.add_memory_listener(671364, 4, lambda x: print(x))
     x.run()
     time.sleep(8)
     x.touchButton(Control.CROSS)
