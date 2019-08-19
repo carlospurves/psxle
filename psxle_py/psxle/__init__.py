@@ -1,6 +1,7 @@
 # This file lets us communicate with the emulator on a low level
 # and is the closest-to-the-metal Python in the project
 import subprocess
+import itertools
 import os
 import time
 import errno
@@ -13,8 +14,11 @@ import tempfile
 import struct
 from PIL import Image
 
-gameCatalogue = [("kula", "/isos/kula.iso")]
+HOMEOVERRIDE = None #"/local/scratch/cp614/.psxpy"
 
+def interact():
+    import code
+    code.InteractiveConsole(locals=globals()).interact()
 
 class Display:
     NONE = 2
@@ -45,11 +49,11 @@ class Console:
     def parseInt(self,b):
         return int.from_bytes(b, byteorder='little')
 
-    def __init__(self, iso=None, start=None, gui=False, display=Display.NORMAL, debug=False):
+    def __init__(self, playing, start=None, gui=False, display=Display.NORMAL, debug=False):
         self.debug = debug
         self.control = False
         self.running = False
-        self.playing = iso
+        self.playing = os.path.abspath(playing)
         self.gui = gui
         self.unique = Console.count
         Console.lastInstance = self
@@ -84,6 +88,7 @@ class Console:
 
     def flushAndAwait(self, cond, pipe):
         rec = self.status[cond]
+        #print("Flushing...")
         pipe.flush()
         return self.awaitNotification(cond, start=rec)
 
@@ -157,7 +162,7 @@ class Console:
         self.memoryInterest = []
 
     def createHomeConfig(self):
-        self.CONFIGHOME = os.path.expanduser("~/.psxle")
+        self.CONFIGHOME = os.path.expanduser("~/.psxle") if not HOMEOVERRIDE else HOMEOVERRIDE
         if not os.path.exists(self.CONFIGHOME):
             os.mkdir(self.CONFIGHOME)
             os.mkdir(self.CONFIGHOME+"/isos")
@@ -247,33 +252,26 @@ class Console:
             args = ["xvfb-run", "-a", "-s", "-screen 0 1400x900x24"]
         elif self.display == Display.NONE:
             args = ["xvfb-run", "-a", "-s", "-screen 0 1400x900x24"]
-
-        if self.debug:
-            args.append("-debug")
-
+        else:
+            args = []
         args.append(self.CONFIGHOME+"/psxle")
+        print(args)
         args.append("-cfg")
         args.append(self.CONFIGHOME+"/default.cfg")
 
-        if self.gui or self.playing is None:
-
+        if self.gui:
             args.append("-gui")
-
             args.append("-controlPipe")
             args.append("none")
-
-        elif os.path.isfile(os.path.expanduser(self.playing)):
-
+        elif self.playing is not None:
             args.append("-display")
-            args.append(str(self.display))
-
+            args.append(str(self.display))# if self.display != Display.FAST else Display.NORMAL))
             args.append("-controlPipe")
-            root_pipe_name = "{}/ml_psxemu{}".format(os.environ['TMPDIR'] if 'TMPDIR' in os.environ else "/tmp",self.unique)
-            control_pipe_name = root_pipe_name+"-joy"
-            proc_pipe_name = root_pipe_name+"-proc"
-            mem_pipe_name = root_pipe_name+"-mem"
-            args.append(root_pipe_name)
-
+            pipeName = "{}/ml_psxemu{}".format(os.environ['TMPDIR'] if 'TMPDIR' in os.environ else "/tmp",self.unique)
+            controlPipeName = pipeName+"-joy"
+            proceedurePipeName = pipeName+"-proc"
+            memPipeName = pipeName+"-mem"
+            args.append(pipeName)
             args.append("-nMemoryListeners")
             args.append(str(len(self.memoryInterest)))
             if self.playState:
@@ -281,9 +279,12 @@ class Console:
                 if os.path.exists(playstatepath):
                     args.append("-loadState")
                     args.append(playstatepath)
-            args.append("-play")
-            args.append(os.path.expanduser(self.playing))
-            self.debugPrint("Playing {}".format(os.path.expanduser(self.playing)))
+            if os.path.isfile(self.playing):
+                args.append("-play")
+                args.append(self.playing)
+                self.debugPrint("Playing ISO: {}".format(self.playing))
+            else:
+                self.debugPrint("The game ISO '{}' is not available.".format(self.playing))
 
         else:
             print("No Execution specified.")
@@ -300,17 +301,16 @@ class Console:
 
         self.listenerFile.seek(0)
         if self.debug:
-            print("Arguments: ", args)
             sub = subprocess.Popen(args, stdin=self.listenerFile)
         else:
-            sub = subprocess.Popen(args, stdin=self.listenerFile, stdout=subprocess.PIPE)
+            sub = subprocess.Popen(args, stdin=self.listenerFile)#, stdout=subprocess.PIPE)
 
         self.proc = sub
         self.pid = sub.pid
         self.running = True
-        self.memCallbackPipe = self.attachCBPipe(mem_pipe_name)
-        self.joyControlPipe = self.attachControlPipe(control_pipe_name)
-        self.procControlPipe = self.attachControlPipe(proc_pipe_name)
+        self.memCallbackPipe = self.attachCBPipe(memPipeName)
+        self.joyControlPipe = self.attachControlPipe(controlPipeName)
+        self.procControlPipe = self.attachControlPipe(proceedurePipeName)
         self.reversePipeThread = IPCThread(self)
         self.reversePipeThread.start()
         self.control = True
@@ -454,10 +454,12 @@ class Console:
         if not self.running:
             print("Not running - memory can only be accessed from running consoles.")
             return None
+        #print("M:", start)
         self.procControlPipe.write(bytes([21]))
         self.procControlPipe.write((start).to_bytes(4, byteorder='big'))
         self.procControlPipe.write((length).to_bytes(4, byteorder='big'))
         self.procControlPipe.write(bytes([(self.unique+5)*2+1]))
+        #print("Writen:", start)
 
         if not self.flushAndAwait(11, self.procControlPipe):
             print("Shared memory timeout..")
@@ -617,6 +619,9 @@ class IPCThread (threading.Thread):
     def stop(self):
         self.owner.debugPrint("Stopping memory speaker...")
         self.killed = True
+
+# Testing with:
+# x.registerMemoryInterest([((700526,700527),lambda was,now: print("Changed:",int.from_bytes(was,'big'),"->",int.from_bytes(now,'big')))])
 
 
 if __name__ == '__main__':
