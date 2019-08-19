@@ -29,6 +29,7 @@
 #include <sys/time.h>
 #include <regex.h>
 #include "Linux.h"
+#include <errno.h>
 #include "ConfDlg.h"
 
 #include "../libpcsxcore/plugins.h"
@@ -587,10 +588,12 @@ int plugin_is_available(gchar *plugin) {
 
 	pluginfile = g_strconcat(getenv("HOME"), PLUGINS_DIR, plugin, NULL);
 
-	if (stat(pluginfile, &stbuf) == -1)
+	if (stat(pluginfile, &stbuf) == -1){
 		retval = FALSE;
-	else
+    printf("Oh dear, something went wrong with read()! %s -> %s\n", strerror(errno), pluginfile);
+	}else{
 		retval = TRUE;
+	}
 
 	g_free(pluginfile);
 
