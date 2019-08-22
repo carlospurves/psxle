@@ -14,6 +14,25 @@ import tempfile
 import struct
 from PIL import Image
 
+
+class ISONotFoundException(Exception):
+    def __init__(self,*args,**kwargs):
+        Exception.__init__(self,*args,**kwargs)
+
+class ExecutableNotFoundException(Exception):
+    def __init__(self,*args,**kwargs):
+        Exception.__init__(self,*args,**kwargs)
+
+class ConfigurationChangeWhileRunningException(Exception):
+    def __init__(self,*args,**kwargs):
+        Exception.__init__(self,*args,**kwargs)
+
+class MemoryListener():
+    def __init__(self, start, length, callback, start_silent=False, fresh_only=False, use_buffer=False):
+        self.start, self.length, self.callback = start, length, callback
+        self.start_silent, self.fresh_only, self.use_buffer = start_silent, fresh_only, use_buffer
+        return
+
 class SharedPSXCallbackManager():
     def __init__(self):
         self.arrival_times = {}
@@ -28,8 +47,7 @@ class SharedPSXCallbackManager():
         self.arrival_times[cond] = time.time()
     
 class Display:
-    NONE = 2
-    FAST = 0
+    NONE = 0
     NORMAL = 1
 
 class Control:
@@ -44,7 +62,10 @@ class Control:
     SQUARE = 15
 
 class Console:
-    count = 0
+    OPS_COUNT = 16
+    CONTROLLERS = 2
+    
+    unique_instance_id = itertools.count()
     shared_memory_timeout = 3
     cfg_path = os.path.expanduser("~/.psxle")
 
@@ -63,10 +84,15 @@ class Console:
         self.debug = debug
         self.control = False
         self.running = False
-        self.playing = os.path.abspath(playing)
-        self.gui = gui
-        self.unique = Console.count
-        Console.count += 1
+        self._using_gui = gui
+        self._iso = os.path.abspath(playing)
+
+        if not os.path.is_file(self._iso):
+            # Console object should not be created with a
+            # non-existant iso
+            raise ISONotFoundException(self._iso)
+
+        self._unique = next(self.unique_instance_id)
 
         self._memory_listener_list = []
         self._memory_listener_coverage = None
@@ -75,7 +101,7 @@ class Console:
         self.paused = False
         self.display = display
 
-        self._fps = 100
+        self._speed = 100
 
         self.is_recording_audio = False
         
@@ -141,7 +167,7 @@ class Console:
 
 
     def _get_state_path(self, name):
-        states_path = os.path.join(Console.cfg_path, "states", os.path.basename(self.playing))
+        states_path = os.path.join(Console.cfg_path, "states", os.path.basename(self._iso))
         if not os.path.isdir(states_path):
             os.mkdir(states_path)
         state_name = "{}.state".format(name)
@@ -166,60 +192,64 @@ class Console:
     # Run and exit:
 
     def run(self):
-        if self.running:
-            print("Console already running - Console.exit() to kill.")
-            return
-        if self.display == Display.FAST:
-            args = ["xvfb-run", "-a", "-s", "-screen 0 1400x900x24"]
-        elif self.display == Display.NONE:
-            args = ["xvfb-run", "-a", "-s", "-screen 0 1400x900x24"]
-        else:
-            args = []
-        args.append(Console.cfg_path+"/psxle")
-        args.append("-cfg")
-        args.append(Console.cfg_path+"/default.cfg")
 
-        if self.gui:
-            args.append("-gui")
-            args.append("-controlPipe")
-            args.append("none")
+        if not os.path.isfile(self._iso):
+            # ISO must have moved/been deleted
+            raise ISONotFoundException(self._iso)
+
+        if self.running:
+            # Do not open multiple
+            return
+
+        exc = []
+
+        if self.display == Display.NONE:
+            exc += ["xvfb-run", "-a", "-s", "-screen 0 1400x900x24"]
+            
+        exc.append(Console.cfg_path+"/psxle")
+        exc.append("-cfg")
+        exc.append(Console.cfg_path+"/default.cfg")
+
+        if self._using_gui:
+            exc.append("-gui")
+            exc.append("-controlPipe")
+            exc.append("none")
         else:
-            args.append("-display")
-            args.append(str(self.display))
-            args.append("-controlPipe")
-            pipeName = "{}/ml_psxemu{}".format(os.environ['TMPDIR'] if 'TMPDIR' in os.environ else "/tmp",self.unique)
+            exc.append("-display")
+            exc.append(str(self.display))
+            exc.append("-controlPipe")
+            pipeName = "{}/ml_psxemu{}".format(os.environ['TMPDIR'] if 'TMPDIR' in os.environ else "/tmp",self._unique)
             controlPipeName = pipeName+"-joy"
             proceedurePipeName = pipeName+"-proc"
             memPipeName = pipeName+"-mem"
-            args.append(pipeName)
-            args.append("-nMemoryListeners")
-            args.append(str(len(self._memory_listener_list)))
+            exc.append(pipeName)
+            exc.append("-nMemoryListeners")
+            exc.append(str(len(self._memory_listener_list)))
             if self.game_state:
                 playstatepath = self._get_state_path(self.game_state)
                 if os.path.exists(playstatepath):
-                    args.append("-loadState")
-                    args.append(playstatepath)
-            if os.path.isfile(self.playing):
-                args.append("-play")
-                args.append(self.playing)
-                self.log("Playing ISO: {}".format(self.playing))
+                    exc.append("-loadState")
+                    exc.append(playstatepath)
+            if os.path.isfile(self._iso):
+                exc.append("-play")
+                exc.append(self._iso)
+                self.log("Playing ISO: {}".format(self._iso))
             else:
-                self.log("The game ISO '{}' is not available.".format(self.playing))
+                self.log("The game ISO '{}' is not available.".format(self._iso))
 
         self._memory_listeners = tempfile.NamedTemporaryFile()
 
-        for k in self._memory_listener_list:
-            keyout = (0b10000000 if k[4] else 0) | k[0]
-            self.log("Sending",keyout)
-            self._memory_listeners.write(k[1].to_bytes(4, byteorder=sys.byteorder))
-            self._memory_listeners.write(k[2].to_bytes(4, byteorder=sys.byteorder))
-            self._memory_listeners.write(bytes([keyout,1 if k[5] else 0,1 if k[6] else 0,0]))
+        for interest in self._memory_listener_list:
+            key = (0b10000000 if interest.start_silent else 0) | interest.key
+            self._memory_listeners.write(Console.int32(interest.start))
+            self._memory_listeners.write(Console.int32(interest.length))
+            self._memory_listeners.write(bytes([key,1 if interest.fresh_only else 0,1 if interest.use_buffer else 0,0]))
 
         self._memory_listeners.seek(0)
         if self.debug:
-            sub = subprocess.Popen(args, stdin=self._memory_listeners)
+            sub = subprocess.Popen(exc, stdin=self._memory_listeners)
         else:
-            sub = subprocess.Popen(args, stdin=self._memory_listeners, stdout=subprocess.PIPE)
+            sub = subprocess.Popen(exc, stdin=self._memory_listeners, stdout=subprocess.PIPE)
 
         self.process = sub
         self.running = True
@@ -233,7 +263,7 @@ class Console:
     def exit(self):
         if self.running:
             if self.paused:
-                self.resume(block=True)
+                self.unfreeze(block=True)
             self._clear_shared_memory()
             self.proc_pipe.write(bytes([1]))
             self.proc_pipe.flush()
@@ -254,7 +284,7 @@ class Console:
 
     # Pause and resume:
     
-    def pause(self, block=True):
+    def freeze(self, block=True):
         if self.running:
             if self.paused:
                 return True
@@ -273,7 +303,7 @@ class Console:
         else:
             print("Cannot pause emulator that is not running.")
 
-    def resume(self, block=True):
+    def unfreeze(self, block=True):
         if not self.running:
             return
         if not self.paused:
@@ -305,7 +335,7 @@ class Console:
             # Ignore erroneous button presses
             print("Error, controller not initialised.")
             return
-        elif button >= self.listOperationCount() or controller >= self.listControllerCount():
+        elif button >= Console.OPS_COUNT or controller >= Console.CONTROLLERS:
             print("Error, control function out of range (%i, %i)."%(button,controller))
             return
         package = (controller << 6 | button) | 32
@@ -317,7 +347,7 @@ class Console:
             # Ignore erroneous button presses
             print("Error, controller not initialised.")
             return
-        elif button >= self.listOperationCount() or controller >= self.listControllerCount():
+        elif button >= Console.OPS_COUNT or controller >= Console.CONTROLLERS:
             print("Error, control function out of range (%i, %i)."%(button,controller))
             return
         package = (controller << 6 | button)
@@ -357,12 +387,12 @@ class Console:
     # Speed change:
 
     @property
-    def fps(self):
-        return self._fps
+    def speed(self):
+        return self._speed
 
-    @fps.setter
-    def fps(self, val):
-        self._fps = val
+    @speed.setter
+    def speed(self, val):
+        self._speed = val
         if not self.running:
             print("Not running - speed can only be set for running consoles.")
             return None
@@ -385,7 +415,7 @@ class Console:
         if not name.isalnum():
             return False
         if self.paused:
-            self.resume(block=True)
+            self.unfreeze(block=True)
         path = self._get_state_path(name)
         self.handle_state_save(callback)
         self.proc_pipe.write(bytes([41, len(path)]))
@@ -398,7 +428,7 @@ class Console:
         self.game_state = name
         if self.running:
             if self.paused:
-                self.resume(block=True)
+                self.unfreeze(block=True)
             path = self._get_state_path(name)
             if not os.path.exists(path):
                 return False
@@ -426,13 +456,14 @@ class Console:
     
     def add_memory_listener(self, start, lgth, onChange, start_silent=False, only_new=True, buffer=True):
         if self.running:
-            print("Must register memory listeners before running an instance.")
-            return
+            raise ConfigurationChangeWhileRunningException("Must register memory listeners before running an instance. Try using sleep/wake for listeners.")
         key = len(self._memory_listener_list)
-        self._memory_listener_list.append((key,start,lgth,onChange,start_silent,only_new,buffer))
+        self._memory_listener_list.append(MemoryListener(start, lgth, onChange, start_silent, only_new, buffer))
         return key
 
     def clear_memory_listeners(self):
+        if self.running:
+            raise ConfigurationChangeWhileRunningException("Cannot remove listeners while running. Try sleep?")
         self._memory_listener_list = []
 
     def wake_memory_listener(self, key):
@@ -460,7 +491,7 @@ class Console:
         self.proc_pipe.write(bytes([21]))
         self.proc_pipe.write((start).to_bytes(4, byteorder='big'))
         self.proc_pipe.write((length).to_bytes(4, byteorder='big'))
-        self.proc_pipe.write(bytes([(self.unique+5)*2+1]))
+        self.proc_pipe.write(bytes([(self._unique+5)*2+1]))
 
         if not self._flush_then_wait(11, self.proc_pipe):
             print("Shared memory timeout..")
@@ -470,7 +501,7 @@ class Console:
             startTime = time.time()
             while True:
                 try:
-                    self.sharedCommMemory = sysv_ipc.SharedMemory((self.unique+5)*2+1)
+                    self.sharedCommMemory = sysv_ipc.SharedMemory((self._unique+5)*2+1)
                 except sysv_ipc.ExistentialError:
                     if time.time()-startTime < Console.shared_memory_timeout:
                         continue
@@ -562,21 +593,21 @@ class Console:
 
     # Screen/GPU:
 
-    def snapshot(self):
+    def get_screen(self):
         self.proc_pipe.write(bytes([11]))
-        self.proc_pipe.write(bytes([(self.unique+5)*2]))
+        self.proc_pipe.write(bytes([(self._unique+5)*2]))
         self.proc_pipe.flush()
 
         startTime = time.time()
         while True:
             try:
-                memory = sysv_ipc.SharedMemory((self.unique+5)*2)
+                memory = sysv_ipc.SharedMemory((self._unique+5)*2)
             except sysv_ipc.ExistentialError:
                 if time.time()-startTime < Console.shared_memory_timeout:
                     continue
                 else:
                     self.log("Shared memory timeout!")
-                    return self.snapshot()
+                    return self.get_screen()
             except Exception as ex:
                 self.log("Shared memory error ",type(ex))
                 return
@@ -601,7 +632,7 @@ class Console:
     # Useful functions:
 
     def snapshot_to_file(self, path):
-        data = self.snapshot()
+        data = self.get_screen()
         img = Image.fromarray(data, 'RGB')
         img.save(path)
 
