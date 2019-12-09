@@ -4,6 +4,7 @@ import subprocess
 import itertools
 import os
 import time
+import cv2
 import errno
 import sysv_ipc
 import numpy as np
@@ -28,8 +29,8 @@ class ConfigurationChangeWhileRunningException(Exception):
         Exception.__init__(self,*args,**kwargs)
 
 class MemoryListener():
-    def __init__(self, start, length, callback, start_silent=False, fresh_only=False, use_buffer=False):
-        self.start, self.length, self.callback = start, length, callback
+    def __init__(self, key, start, length, callback, start_silent=False, fresh_only=False, use_buffer=False):
+        self.start, self.length, self.callback, self.key = start, length, callback, key
         self.start_silent, self.fresh_only, self.use_buffer = start_silent, fresh_only, use_buffer
         return
 
@@ -39,13 +40,13 @@ class SharedPSXCallbackManager():
 
     def get_last(self, cond):
         return self.arrival_times.get(cond, 0)
-    
+
     def unchanged(self, cond, value):
         return self.get_last(cond) <= value
 
     def update(self, cond):
         self.arrival_times[cond] = time.time()
-    
+
 class Display:
     NONE = 0
     NORMAL = 1
@@ -64,7 +65,7 @@ class Control:
 class Console:
     OPS_COUNT = 16
     CONTROLLERS = 2
-    
+
     unique_instance_id = itertools.count()
     shared_memory_timeout = 3
     cfg_path = os.path.expanduser("~/.psxle")
@@ -73,21 +74,27 @@ class Console:
     def int32(b):
         return int.from_bytes(b, byteorder='little')
 
-    def log(self, *arg):
+    def log(self, args):
+        s = str(" ".join([str(k) for k in list(args)]))
         if self.debug:
-            print(arg)
+            if self.custom_log:
+                self.custom_log(s)
+            else:
+                print(s)
+
 
     def error(self, *args):
         print(*args, file=sys.stderr)
 
-    def __init__(self, playing, start=None, gui=False, display=Display.NORMAL, debug=False):
+    def __init__(self, playing, start=None, gui=False, display=Display.NORMAL, debug=False, custom_log=None):
         self.debug = debug
+        self.custom_log = custom_log
         self.control = False
         self.running = False
         self._using_gui = gui
         self._iso = os.path.abspath(playing)
 
-        if not os.path.is_file(self._iso):
+        if not os.path.isfile(self._iso):
             # Console object should not be created with a
             # non-existant iso
             raise ISONotFoundException(self._iso)
@@ -97,14 +104,14 @@ class Console:
         self._memory_listener_list = []
         self._memory_listener_coverage = None
         self._memory_listeners = None
-        
+
         self.paused = False
         self.display = display
 
         self._speed = 100
 
         self.is_recording_audio = False
-        
+
         self.recordingFile = None
         self.game_state = start
         self.cb_handler = SharedPSXCallbackManager()
@@ -205,7 +212,7 @@ class Console:
 
         if self.display == Display.NONE:
             exc += ["xvfb-run", "-a", "-s", "-screen 0 1400x900x24"]
-            
+
         exc.append(Console.cfg_path+"/psxle")
         exc.append("-cfg")
         exc.append(Console.cfg_path+"/default.cfg")
@@ -241,8 +248,8 @@ class Console:
 
         for interest in self._memory_listener_list:
             key = (0b10000000 if interest.start_silent else 0) | interest.key
-            self._memory_listeners.write(Console.int32(interest.start))
-            self._memory_listeners.write(Console.int32(interest.length))
+            self._memory_listeners.write(interest.start.to_bytes(4, "little"))
+            self._memory_listeners.write(interest.length.to_bytes(4, "little"))
             self._memory_listeners.write(bytes([key,1 if interest.fresh_only else 0,1 if interest.use_buffer else 0,0]))
 
         self._memory_listeners.seek(0)
@@ -260,7 +267,7 @@ class Console:
         self.reversePipeThread.start()
         self.control = True
 
-    def exit(self):
+    def kill(self):
         if self.running:
             if self.paused:
                 self.unfreeze(block=True)
@@ -283,7 +290,7 @@ class Console:
     ################################################################################################################
 
     # Pause and resume:
-    
+
     def freeze(self, block=True):
         if self.running:
             if self.paused:
@@ -400,6 +407,21 @@ class Console:
         self.proc_pipe.write((val).to_bytes(4, byteorder='big'))
         return self._flush_then_wait(10, self.proc_pipe)
 
+    # For legacy code:
+
+    def setSpeed(self, val, block=False):
+        if not self.running:
+            print("Not running - speed can only be set for running consoles.")
+            return None
+        self.proc_pipe.write(bytes([43]))
+        self.proc_pipe.write((val).to_bytes(4, byteorder='big'))
+        if block:
+            return self._flush_then_wait(10, self.proc_pipe)
+        else:
+            self.proc_pipe.flush()
+            return True
+
+
 
     ################################################################################################################
     ################################################################################################################
@@ -453,12 +475,12 @@ class Console:
     ################################################################################################################
 
     # Memory/RAM:
-    
+
     def add_memory_listener(self, start, lgth, onChange, start_silent=False, only_new=True, buffer=True):
         if self.running:
             raise ConfigurationChangeWhileRunningException("Must register memory listeners before running an instance. Try using sleep/wake for listeners.")
         key = len(self._memory_listener_list)
-        self._memory_listener_list.append(MemoryListener(start, lgth, onChange, start_silent, only_new, buffer))
+        self._memory_listener_list.append(MemoryListener(key, start, lgth, onChange, start_silent, only_new, buffer))
         return key
 
     def clear_memory_listeners(self):
@@ -636,6 +658,13 @@ class Console:
         img = Image.fromarray(data, 'RGB')
         img.save(path)
 
+    def render(self):
+        data = self.get_screen()
+        data = cv2.cvtColor(data, cv2.COLOR_RGB2BGR)
+        cv2.imshow("Running: {}".format(os.path.basename(self._iso)), data)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+
     def ram_to_disk(self, start, length, path, block=True):
         if not self.running:
             print("Not running - memory can only be accessed from running consoles.")
@@ -694,15 +723,15 @@ class IPCThread (threading.Thread):
             key = self.owner.memory_cb_pipe.read(1)[0]
             profile = None
             memoryvalue = None
-            for g in self.owner.memoryInterest:
-                if g[0] == key:
+            for g in self.owner._memory_listener_list:
+                if g.key == key:
                     profile = g
                     break
             if profile is None:
                 continue
-            bytecount = profile[2]
+            bytecount = profile.length
             memoryvalue = self.owner.memory_cb_pipe.read(bytecount)
-            profile[3](memoryvalue)
+            profile.callback(memoryvalue)
 
         self.owner.log("Stopped memory speaker.")
 
@@ -715,4 +744,3 @@ class IPCThread (threading.Thread):
 ############################################  \ IPC THREAD  ####################################################
 ################################################################################################################
 ################################################################################################################
-
