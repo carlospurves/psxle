@@ -1,12 +1,12 @@
 # PSXLE
 
-__PSXLE__ (or __PSX__ __L__earning __E__nvironment) is an PlayStation 1 (PSX) emulator, written in C, that allows programmatic control of PlayStation games. This documentation covers the associated Python library *PSXLE-py*, which allows simple per-game integration with *OpenAI Gym* and other Python applications.
+__PSXLE__ (or __PSX__ __L__earning __E__nvironment) is an PlayStation 1 (PSX) emulator, written in C, that allows programmatic control of PlayStation games. This documentation covers the associated Python library *PSXLE-py*, which allows simple per-game integration with *OpenAI Gym* and other Python applications. The design and development of PSXLE is shown in the paper [on arXiv](https://arxiv.org/pdf/1912.06101.pdf).
 
 ## Building
 
 ### Build Requirements
 
-*Note: a pre-built version of `psxle` is available from `www.whereisagood.place/?sure=not`, if you're using this version, you can skip to "Installation".*
+*Note: a pre-built version of `psxle` will soon be available from <http://carlospurves.com/>, if you're using this version, you can skip to "Installing".*
 
 The following are requirements to build `psxle` on your own computer. Note that this has only been tested on Ubuntu 16.04+ and other systems may require additonal steps.
 
@@ -60,7 +60,7 @@ The Python library's main function is to expose a `Console` class to represent a
 
   * `get_screen` synchronously returns an `np.array` of the console's instantaneous visual output
 
-Using a combination of these methods allows for the creation of a *game abstraction*. See the section on "Game Abstractions" for more discussion.
+Using a combination of these methods allows for the creation of a *game abstraction*. See the PSXLE paper on aXiv for more discussion. More information will be made available here soon.
 
 ## Quick Start
 
